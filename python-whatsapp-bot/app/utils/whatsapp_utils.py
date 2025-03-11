@@ -7,6 +7,8 @@ from datetime import datetime
 from openai import OpenAI
 # from app.services.openai_service import generate_response
 import re
+from apscheduler.schedulers.background import BackgroundScheduler
+
 
 from dotenv import load_dotenv, set_key, find_dotenv
 
@@ -36,7 +38,6 @@ def cleanup_inactive_sessions(timeout_minutes=30):
         logging.info(f"Cleaned up inactive session for {phone_number}")
 
 # Initialize scheduler after defining the cleanup function
-from apscheduler.schedulers.background import BackgroundScheduler
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_inactive_sessions, 'interval', minutes=15)  # Remove the parentheses
