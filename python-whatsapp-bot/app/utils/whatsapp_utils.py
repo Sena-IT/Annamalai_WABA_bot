@@ -1,5 +1,5 @@
 import logging
-from flask import current_app, jsonify
+from fastapi.responses import JSONResponse
 import json
 import requests
 import os
@@ -9,6 +9,10 @@ from openai import OpenAI
 import re
 
 from dotenv import load_dotenv, set_key, find_dotenv
+
+
+from app.config import load_configurations
+settings = load_configurations()
 
 dotenv_path = find_dotenv()
 load_dotenv(dotenv_path)
@@ -411,34 +415,41 @@ def generate_response(body):
     session[phone_number]["conversation_history"].append(f"Bot: {bot_response}")
 
     return bot_response
-    
+
 
 def send_message(data):
     headers = {
         "Content-type": "application/json",
-        "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}",
+        "Authorization": f"Bearer {settings.ACCESS_TOKEN}",
     }
 
-    url = f"https://graph.facebook.com/{current_app.config['VERSION']}/{current_app.config['PHONE_NUMBER_ID']}/messages"
+    url = f"https://graph.facebook.com/{settings.VERSION}/{settings.PHONE_NUMBER_ID}/messages"
 
     try:
-        logging.info("------------------- sending response ---------- %s",data)
+        logging.info("------------------- sending response ---------- %s", data)
         response = requests.post(
             url, data=data, headers=headers, timeout=10
-        )  # 10 seconds timeout as an example
-        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+        )
+        response.raise_for_status()  # Raises an HTTPError if the request fails
     except requests.Timeout:
         logging.error("Timeout occurred while sending message")
-        return jsonify({"status": "error", "message": "Request timed out"}), 408
-    except (
-        requests.RequestException
-    ) as e:  # This will catch any general request exception
+        return JSONResponse(
+            content={"status": "error", "message": "Request timed out"},
+            status_code=408
+        )
+    except requests.RequestException as e:
         logging.error(f"Request failed due to: {e}")
-        return jsonify({"status": "error", "message": "Failed to send message"}), 500
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to send message"},
+            status_code=500
+        )
     else:
         # Process the response as normal
         log_http_response(response)
-        return response
+        return JSONResponse(
+            content={"status": "success", "message": "Message sent successfully"},
+            status_code=response.status_code
+        )
 
 
 def process_text_for_whatsapp(text):
@@ -513,10 +524,10 @@ def process_whatsapp_message(body):
 def get_media_url(media_id):
     """Get the URL for downloading media content"""
     headers = {
-        "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}"
+        "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
     }
     
-    url = f"https://graph.facebook.com/{current_app.config['VERSION']}/{media_id}"
+    url = f"https://graph.facebook.com/{settings.VERSION}/{media_id}"
     
     try:
         response = requests.get(url, headers=headers)
@@ -532,7 +543,7 @@ def process_audio_to_text(audio_url):
     try:
         # Download the audio file
         headers = {
-            "Authorization": f"Bearer {current_app.config['ACCESS_TOKEN']}"
+            "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
         }
         audio_response = requests.get(audio_url, headers=headers)
         
@@ -562,8 +573,8 @@ def process_audio_to_text(audio_url):
 # def validate_phone_number(data):
 
 #     # Replace these variables with your own values
-#     access_token = current_app.config['ACCESS_TOKEN']
-#     phone_number_id = current_app.config['PHONE_NUMBER_ID']
+#     access_token = settings.ACCESS_TOKEN
+#     phone_number_id = settings.PHONE_NUMBER_ID
 #     verification_method = 'SMS'  # or 'VOICE'
 #     language_code = 'en_US'  # Language code for the verification message
 

@@ -1,17 +1,18 @@
-from functools import wraps
-from flask import current_app, jsonify, request
 import logging
 import hashlib
 import hmac
+from fastapi import Request, HTTPException, Depends
+from app.config import load_configurations
 
+settings = load_configurations()
 
-def validate_signature(payload, signature):
+def validate_signature(payload: str, signature: str) -> bool:
     """
     Validate the incoming payload's signature against our expected signature
     """
     # Use the App Secret to hash the payload
     expected_signature = hmac.new(
-        bytes(current_app.config["APP_SECRET"], "latin-1"),
+        bytes(settings.APP_SECRET, "latin-1"),
         msg=payload.encode("utf-8"),
         digestmod=hashlib.sha256,
     ).hexdigest()
@@ -19,20 +20,18 @@ def validate_signature(payload, signature):
     # Check if the signature matches
     return hmac.compare_digest(expected_signature, signature)
 
-
-def signature_required(f):
+async def signature_required(request: Request) -> bool:
     """
-    Decorator to ensure that the incoming requests to our webhook are valid and signed with the correct signature.
+    FastAPI dependency to verify the WhatsApp webhook signature
     """
-
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        signature = request.headers.get("X-Hub-Signature-256", "")[
-            7:
-        ]  # Removing 'sha256='
-        if not validate_signature(request.data.decode("utf-8"), signature):
-            logging.info("Signature verification failed!")
-            return jsonify({"status": "error", "message": "Invalid signature"}), 403
-        return f(*args, **kwargs)
-
-    return decorated_function
+    signature = request.headers.get("X-Hub-Signature-256", "")[7:]  # Removing 'sha256='
+    body = await request.body()
+    
+    if not validate_signature(body.decode("utf-8"), signature):
+        logging.info("Signature verification failed!")
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid signature"
+        )
+    
+    return True

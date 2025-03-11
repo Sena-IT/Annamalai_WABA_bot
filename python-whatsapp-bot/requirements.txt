@@ -1,11 +1,9 @@
-# flask
-# python-dotenv
-# openai
-# aiohttp
-# requests
-flask==3.0.0
 python-dotenv==1.0.0
 requests==2.31.0
-openai==1.12.0
+openai==1.65.5
 APScheduler==3.10.4
 python-dateutil==2.8.2
+fastapi==0.109.2
+uvicorn==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0

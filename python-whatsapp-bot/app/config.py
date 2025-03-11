@@ -2,19 +2,28 @@ import sys
 import os
 from dotenv import load_dotenv
 import logging
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+from typing import Optional
 
+class Settings(BaseSettings):
+    ACCESS_TOKEN: str
+    APP_ID: str
+    APP_SECRET: str
+    RECIPIENT_WAID: str
+    VERSION: str
+    PHONE_NUMBER_ID: str
+    VERIFY_TOKEN: str
+    OPENAI_API_KEY: Optional[str] = None
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
-def load_configurations(app):
-    load_dotenv()
-    app.config["ACCESS_TOKEN"] = os.getenv("ACCESS_TOKEN")
-    app.config["YOUR_PHONE_NUMBER"] = os.getenv("YOUR_PHONE_NUMBER")
-    app.config["APP_ID"] = os.getenv("APP_ID")
-    app.config["APP_SECRET"] = os.getenv("APP_SECRET")
-    app.config["RECIPIENT_WAID"] = os.getenv("RECIPIENT_WAID")
-    app.config["VERSION"] = os.getenv("VERSION")
-    app.config["PHONE_NUMBER_ID"] = os.getenv("PHONE_NUMBER_ID")
-    app.config["VERIFY_TOKEN"] = os.getenv("VERIFY_TOKEN")
-
+@lru_cache()
+def load_configurations():
+    """Load and cache configuration settings"""
+    load_dotenv(override=True)
+    return Settings()
 
 def configure_logging():
     logging.basicConfig(
