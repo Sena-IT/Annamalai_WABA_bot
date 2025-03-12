@@ -432,9 +432,10 @@ While providing a response to the user, sound like a human and use a professiona
 
 2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
 
-3. If the user confirms, do not send summary again , only return the service they asked and confirmation as true or false in json.
+3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
 3. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the "service" they asked and "confirmation" as true or false in json alone. do not say anything else.
-
+4. Must --- Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
+5. If they say thank , say regardingly.
 Rules:
 1. Do not say thank you or hello for every response.
 2. Do not ask any additional questions after collecting all required information.
@@ -599,6 +600,97 @@ def upload_doc_to_meta_cloud(document_path):
             return None
 
 
+def get_audio_message_input(recipient, media_id):
+    """Create audio message input format for WhatsApp API"""
+    return json.dumps({
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": recipient,
+        "type": "audio",
+        "audio": {
+            "id": media_id
+        }
+    })
+
+def convert_text_to_speech(text):
+    """Convert text to speech using OpenAI's TTS API"""
+    try:
+        speech_file_path = "temp_speech.mp3"
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",  # You can choose from: alloy, echo, fable, onyx, nova, shimmer
+            input=text
+        )
+        
+        # Save the audio file using the recommended streaming approach
+        with open(speech_file_path, 'wb') as file:
+            for chunk in response.iter_bytes():
+                file.write(chunk)
+        return speech_file_path
+    except Exception as e:
+        logging.error(f"Error in text-to-speech conversion: {e}")
+        return None
+
+def upload_audio_to_meta_cloud(audio_path):
+    """Upload audio file to Meta's cloud storage"""
+    print("-------------- Uploading audio to Meta cloud ----------------")
+
+    headers = {
+        "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
+    }
+    url = f"https://graph.facebook.com/{settings.VERSION}/{settings.PHONE_NUMBER_ID}/media"
+    
+    with open(audio_path, 'rb') as file:
+        files = {
+            'file': ('audio.mp3', file, 'audio/mpeg')
+        }
+        
+        payload = {
+            'messaging_product': 'whatsapp',
+            'type': 'audio'
+        }    
+
+        response = requests.post(url, files=files, data=payload, headers=headers)
+        uploaded_time = datetime.now()
+
+        if response.status_code == 200:
+            media_id = response.json()['id']
+            logging.info("Audio uploaded successfully. Media ID: %s", media_id)
+            return media_id, uploaded_time
+        else:
+            logging.error("Failed to upload audio: %s", response.text)
+            return None, None
+
+def send_audio_response(wa_id, text_response):
+    """Convert text to speech and send as audio message"""
+    try:
+        # Convert text to speech
+        audio_path = convert_text_to_speech(text_response)
+        if not audio_path:
+            return False
+
+        # Upload audio to Meta cloud
+        media_id, uploaded_time = upload_audio_to_meta_cloud(audio_path)
+        if not media_id:
+            return False
+
+        # Send audio message
+        data = get_audio_message_input(wa_id, media_id)
+        response_code = send_message(data)
+        
+        # Clean up
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        
+        if response_code == 200:
+            delete_uploaded_file(media_id, uploaded_time)
+            return True
+            
+        return False
+    except Exception as e:
+        logging.error(f"Error sending audio response: {e}")
+        return False
+
 def process_whatsapp_message(body):
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
@@ -607,13 +699,8 @@ def process_whatsapp_message(body):
     if message.get("type") == "text":
         message_body = message["text"]["body"]
         response = generate_response(body)
-        print("--------response text----", response)
     elif message.get("type") == "audio":
-        # Get audio details
         audio_id = message["audio"]["id"]
-        mime_type = message["audio"]["mime_type"]
-        
-        # Download and process audio
         audio_url = get_media_url(audio_id)
         if audio_url:
             message_body = process_audio_to_text(audio_url)
@@ -627,65 +714,40 @@ def process_whatsapp_message(body):
     else:
         response = "I can only process text and voice messages. Please send your message in either format."
 
-    # Check if this is a confirmation for GST copy returns
-    # if (message_body.lower() in ['yes', 'correct','yes correct','yes, correct'] and 
-    #     wa_id in session and 
-    #     any('gst return' in msg.lower() for msg in session[wa_id]["conversation_history"])):
-        
-    #     # Send the text response first
-    #     print("--------------- Entered into document part-------------------- ")
-    #     data = get_text_message_input(wa_id, response)
-    #     send_message(data)
-        
-    #     # Then send the PDF document with a specific filename
-    #     document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
-    #     filename = "GST_Returns_Copy.pdf"  # Specify your desired filename here
-
-    #     media_id , uploaded_time = upload_doc_to_meta_cloud(document_path)
-
-    #     send_document(wa_id, media_id, "Here is your GST return copy",uploaded_time)
-    # else:
-    #     # Regular text message
-    #     print("into else")
-    #     data = get_text_message_input(wa_id, response)
-    #     send_message(data)
-
-
     try:
+        print("----------------------bot response--------------",response)
         # Try to parse response as JSON
         if isinstance(response, str) and '{' in response and '}' in response:
             try:
-                # Extract JSON part from the response if it exists
                 json_start = response.find('{')
                 json_end = response.rfind('}') + 1
                 json_str = response[json_start:json_end]
-                print("json_str 703",json_str)
                 response_dict = json.loads(json_str)
                 
-                # Check if response contains service and confirmation fields
                 if isinstance(response_dict, dict) and "service" in response_dict and "confirmation" in response_dict:
                     if response_dict["confirmation"]:
                         service_type = response_dict["service"]
                         document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
                         if document_path:
-                            print(f"--------------- Sending document for {service_type} service -------------------- ")
                             media_id, uploaded_time = upload_doc_to_meta_cloud(document_path)
                             if media_id:
                                 send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
                             return
             except json.JSONDecodeError:
-                # If JSON parsing fails, send as regular message
+                # Send both text and audio response
                 data = get_text_message_input(wa_id, response)
-                send_message(data)
+                # send_message(data)
+                send_audio_response(wa_id, response)
         else:
-            # If response is not JSON, send as regular message
+            # Send both text and audio response
             data = get_text_message_input(wa_id, response)
-            send_message(data)
+            # send_message(data)
+            send_audio_response(wa_id, response)
             
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
-        # Send a fallback message in case of any error
-        data = get_text_message_input(wa_id, "Sorry, I encountered an error processing your request.")
+        fallback_message = "Sorry, I encountered an error processing your request."
+        data = get_text_message_input(wa_id, fallback_message)
         send_message(data)
 
 def get_media_url(media_id):
