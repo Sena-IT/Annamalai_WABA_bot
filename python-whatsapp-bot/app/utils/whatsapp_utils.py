@@ -7,8 +7,6 @@ from datetime import datetime
 from openai import OpenAI
 # from app.services.openai_service import generate_response
 import re
-from apscheduler.schedulers.background import BackgroundScheduler
-
 
 from dotenv import load_dotenv, set_key, find_dotenv
 
@@ -38,6 +36,7 @@ def cleanup_inactive_sessions(timeout_minutes=30):
         logging.info(f"Cleaned up inactive session for {phone_number}")
 
 # Initialize scheduler after defining the cleanup function
+from apscheduler.schedulers.background import BackgroundScheduler
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_inactive_sessions, 'interval', minutes=15)  # Remove the parentheses
@@ -417,6 +416,30 @@ def generate_response(body):
 
     return bot_response
 
+def delete_uploaded_file(media_id,uploaded_time):
+
+    print("------------------- delete_uploaded_file ------------------------")
+
+    url = f"https://graph.facebook.com/{settings.VERSION}/{media_id}"
+    
+    headers = {
+        "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
+    }
+
+    response = requests.delete(url, headers=headers)
+
+    deleted_time = datetime.now()#.strftime("%Y-%m-%d %H:%M:%S")
+
+    total_deletion_time = deleted_time - uploaded_time
+
+    print("---------------------- total_deletion_time -----------------------",total_deletion_time)
+
+    if response.status_code == 200:
+        print(f"--------------------- File{media_id} deleted from Meta Server.------------------------")
+    else:
+        print(f"-----------------------Failed to delete{media_id} file.----------------------------")
+
+
 
 def send_message(data):
     headers = {
@@ -427,11 +450,18 @@ def send_message(data):
     url = f"https://graph.facebook.com/{settings.VERSION}/{settings.PHONE_NUMBER_ID}/messages"
 
     try:
-        logging.info("------------------- sending response ---------- %s", data)
+        logging.info("------------------- sending response ---------- %s",data)
         response = requests.post(
             url, data=data, headers=headers, timeout=10
-        )
-        response.raise_for_status()  # Raises an HTTPError if the request fails
+        )  # 10 seconds timeout as an example
+        response.raise_for_status() 
+
+        return response.status_code
+        
+        # if response.status_code == 200 and data.get("document").get("id"):
+        #     media_id = data.get("document").get("id")
+        #     delete_uploaded_file(media_id)
+             # Raises an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.Timeout:
         logging.error("Timeout occurred while sending message")
         return JSONResponse(
@@ -445,7 +475,6 @@ def send_message(data):
             status_code=500
         )
     else:
-        # Process the response as normal
         log_http_response(response)
         return JSONResponse(
             content={"status": "success", "message": "Message sent successfully"},
@@ -471,26 +500,67 @@ def process_text_for_whatsapp(text):
     return whatsapp_style_text
 
 
-def get_document_message_input(recipient, document_path, caption=""):
+def get_document_message_input(recipient, media_id, caption=""):
+    print("--------------- Entered into get_document_message_input -------------------- ")
     return json.dumps({
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": recipient,
         "type": "document",
         "document": {
-            "link": document_path,
+            "id": media_id,
             "caption": caption,
             "filename": "GST Return Copy"
         }
     })
 
-def send_document(phone_number, document_path, caption=""):
-    data = get_document_message_input(phone_number, document_path, caption)
-    return send_message(data)
+def send_document(phone_number, media_id, caption="",uploaded_time = None):
+    print("--------------- inside send_docuent function -------------------- ")
+    data = get_document_message_input(phone_number, media_id, caption)
+    response_code = send_message(data)
+    if response_code == 200 :
+        delete_uploaded_file(media_id,uploaded_time)
+
+    
+    
+
+def upload_doc_to_meta_cloud(document_path):
+    print("-------------- Entered into upload_doc_to_meta_cloud function ----------------")
+
+    headers = {
+        "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
+    }
+    url = f"https://graph.facebook.com/{settings.VERSION}/{settings.PHONE_NUMBER_ID}/media"
+
+    # Determine the file type based on extension
+    file_type = 'application/pdf'  # Since we're handling PDF files
+    
+    # Open file and send it to Meta API
+    with open(document_path, 'rb') as file:
+        files = {
+            'file': ('document.pdf', file, file_type)
+        }
+
+        payload = {
+            'messaging_product': 'whatsapp',
+            'type': 'document'
+        }    
+
+        response = requests.post(url, files=files, data=payload, headers=headers)
+
+        uploaded_time = datetime.now()
+
+        if response.status_code == 200:
+            media_id = response.json()['id']
+            logging.info("File uploaded successfully. Media ID:%s", media_id)
+            return media_id , uploaded_time
+        else:
+            logging.error("Failed to upload file:%s", response.text)
+            return None
+
 
 def process_whatsapp_message(body):
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
-    name = body["entry"][0]["changes"][0]["value"]["contacts"][0]["profile"]["name"]
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
     
     # Handle different message types
@@ -518,9 +588,32 @@ def process_whatsapp_message(body):
     else:
         response = "I can only process text and voice messages. Please send your message in either format."
 
-    # Send response back to user
-    data = get_text_message_input(wa_id, response)
-    send_message(data)
+
+    # Check if this is a confirmation for GST copy returns
+    if (message_body.lower() in ['yes', 'correct','yes correct','yes, correct'] and 
+        wa_id in session and 
+        any('gst return' in msg.lower() for msg in session[wa_id]["conversation_history"])):
+        
+        # Send the text response first
+        print("--------------- Entered into document part-------------------- ")
+        data = get_text_message_input(wa_id, response)
+        send_message(data)
+        
+        # Then send the PDF document with a specific filename
+        document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
+        filename = "GST_Returns_Copy.pdf"  # Specify your desired filename here
+
+        media_id , uploaded_time = upload_doc_to_meta_cloud(document_path)
+
+        send_document(wa_id, media_id, "Here is your GST return copy",uploaded_time)
+    else:
+        # Regular text message
+        data = get_text_message_input(wa_id, response)
+        send_message(data)
+
+    # # Send response back to user
+    # data = get_text_message_input(wa_id, response)
+    # send_message(data)
 
 def get_media_url(media_id):
     """Get the URL for downloading media content"""
@@ -550,7 +643,7 @@ def process_audio_to_text(audio_url):
         
         if audio_response.status_code == 200:
             # Save temporarily
-            temp_file = "temp_audio.ogg" #add timestamp
+            temp_file = "temp_audio.ogg" 
             with open(temp_file, "wb") as f:
                 f.write(audio_response.content)
             
