@@ -353,7 +353,7 @@ def generate_response(body):
         """
     
 
-    nlp_prompt = f"""
+    nl_prompt_basic_step = f"""
         You are Ai Annamalai Associates.
         Greet with who you are and friendly tone.
         You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
@@ -398,6 +398,50 @@ def generate_response(body):
         3.Make sure every response is concise.
         4.Do not mention the format before the user provide the details.                
           """    
+    
+    nl_prompt_basic_total_all_confirm = f"""
+       You are Ai Annamalai Associates.
+Greet with who you are and friendly tone.
+You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
+
+Conversation History:  
+Refer to the conversation history to ask the next logical question based on the user's last response. Ensure the conversation flows logically without repeating questions.
+conversation_history: {session[phone_number]["conversation_history"]}
+
+current_user_message: {message_body}
+
+While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
+
+1. Step-by-Step Data Collection
+   1. Start by introducing yourself and presenting the service list:
+      1. Income Tax (IT)
+      2. GST  
+      3. Drafting
+      4. Registration
+      5. Loans
+      6. Other Services
+   2. In the same initial message, ask for:
+      - The user's name
+      - Their email
+      - Whether they are an individual or a business
+      - Which service they're interested in
+   3. Once they provide this information, based on their individual/business selection:
+      1. If individual, request PAN (validate format).
+      2. If business, request GSTIN (validate format).
+   4. Confirm that all details have been recorded.
+
+2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
+
+3. If the user confirms, do not send summary again , only return the service they asked and confirmation as true or false in json.
+3. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the "service" they asked and "confirmation" as true or false in json alone. do not say anything else.
+
+Rules:
+1. Do not say thank you or hello for every response.
+2. Do not ask any additional questions after collecting all required information.
+3. Make sure every response is concise.
+4. Do not mention the format before the user provides the details.
+5. Only output the dictionary when the user has confirmed their details.
+"""
 
 
     
@@ -406,7 +450,7 @@ def generate_response(body):
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful chatbot."},
-            {"role": "user", "content": nlp_prompt}
+            {"role": "user", "content": nl_prompt_basic_total_all_confirm}
         ]
     )
 
@@ -458,10 +502,6 @@ def send_message(data):
 
         return response.status_code
         
-        # if response.status_code == 200 and data.get("document").get("id"):
-        #     media_id = data.get("document").get("id")
-        #     delete_uploaded_file(media_id)
-             # Raises an HTTPError if the HTTP request returned an unsuccessful status code
     except requests.Timeout:
         logging.error("Timeout occurred while sending message")
         return JSONResponse(
@@ -567,6 +607,7 @@ def process_whatsapp_message(body):
     if message.get("type") == "text":
         message_body = message["text"]["body"]
         response = generate_response(body)
+        print("--------response text----", response)
     elif message.get("type") == "audio":
         # Get audio details
         audio_id = message["audio"]["id"]
@@ -575,10 +616,8 @@ def process_whatsapp_message(body):
         # Download and process audio
         audio_url = get_media_url(audio_id)
         if audio_url:
-            # Convert audio to text using speech-to-text service
             message_body = process_audio_to_text(audio_url)
             if message_body:
-                # Process the transcribed text through your normal flow
                 body["entry"][0]["changes"][0]["value"]["messages"][0]["text"] = {"body": message_body}
                 response = generate_response(body)
             else:
@@ -588,32 +627,66 @@ def process_whatsapp_message(body):
     else:
         response = "I can only process text and voice messages. Please send your message in either format."
 
-
     # Check if this is a confirmation for GST copy returns
-    if (message_body.lower() in ['yes', 'correct','yes correct','yes, correct'] and 
-        wa_id in session and 
-        any('gst return' in msg.lower() for msg in session[wa_id]["conversation_history"])):
+    # if (message_body.lower() in ['yes', 'correct','yes correct','yes, correct'] and 
+    #     wa_id in session and 
+    #     any('gst return' in msg.lower() for msg in session[wa_id]["conversation_history"])):
         
-        # Send the text response first
-        print("--------------- Entered into document part-------------------- ")
-        data = get_text_message_input(wa_id, response)
-        send_message(data)
+    #     # Send the text response first
+    #     print("--------------- Entered into document part-------------------- ")
+    #     data = get_text_message_input(wa_id, response)
+    #     send_message(data)
         
-        # Then send the PDF document with a specific filename
-        document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
-        filename = "GST_Returns_Copy.pdf"  # Specify your desired filename here
+    #     # Then send the PDF document with a specific filename
+    #     document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
+    #     filename = "GST_Returns_Copy.pdf"  # Specify your desired filename here
 
-        media_id , uploaded_time = upload_doc_to_meta_cloud(document_path)
+    #     media_id , uploaded_time = upload_doc_to_meta_cloud(document_path)
 
-        send_document(wa_id, media_id, "Here is your GST return copy",uploaded_time)
-    else:
-        # Regular text message
-        data = get_text_message_input(wa_id, response)
+    #     send_document(wa_id, media_id, "Here is your GST return copy",uploaded_time)
+    # else:
+    #     # Regular text message
+    #     print("into else")
+    #     data = get_text_message_input(wa_id, response)
+    #     send_message(data)
+
+
+    try:
+        # Try to parse response as JSON
+        if isinstance(response, str) and '{' in response and '}' in response:
+            try:
+                # Extract JSON part from the response if it exists
+                json_start = response.find('{')
+                json_end = response.rfind('}') + 1
+                json_str = response[json_start:json_end]
+                print("json_str 703",json_str)
+                response_dict = json.loads(json_str)
+                
+                # Check if response contains service and confirmation fields
+                if isinstance(response_dict, dict) and "service" in response_dict and "confirmation" in response_dict:
+                    if response_dict["confirmation"]:
+                        service_type = response_dict["service"]
+                        document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
+                        if document_path:
+                            print(f"--------------- Sending document for {service_type} service -------------------- ")
+                            media_id, uploaded_time = upload_doc_to_meta_cloud(document_path)
+                            if media_id:
+                                send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
+                            return
+            except json.JSONDecodeError:
+                # If JSON parsing fails, send as regular message
+                data = get_text_message_input(wa_id, response)
+                send_message(data)
+        else:
+            # If response is not JSON, send as regular message
+            data = get_text_message_input(wa_id, response)
+            send_message(data)
+            
+    except Exception as e:
+        logging.error(f"Error processing message: {str(e)}")
+        # Send a fallback message in case of any error
+        data = get_text_message_input(wa_id, "Sorry, I encountered an error processing your request.")
         send_message(data)
-
-    # # Send response back to user
-    # data = get_text_message_input(wa_id, response)
-    # send_message(data)
 
 def get_media_url(media_id):
     """Get the URL for downloading media content"""
