@@ -62,7 +62,7 @@ def get_text_message_input(recipient, text):
 
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-sessions = {}
+# sessions = {}
 
     # session state alone
 # def generate_response(body):
@@ -149,125 +149,125 @@ sessions = {}
 #     return "Thank you for your message."
 
 
-    #llm + session state
-def generate_response(body):  
-    phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
-    user_name = body['entry'][0]['changes'][0]['value']['contacts'][0]['profile']['name']
-    message_body = body['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
-    message_id = body['entry'][0]['changes'][0]['value']['messages'][0]['id']
+#     #llm + session state
+# def generate_response(body):  
+#     phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
+#     user_name = body['entry'][0]['changes'][0]['value']['contacts'][0]['profile']['name']
+#     message_body = body['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
+#     message_id = body['entry'][0]['changes'][0]['value']['messages'][0]['id']
 
-    service_mapping = {
-        "1": "Income Tax (IT)",
-        "2": "GST",
-        "3": "Drafting",
-        "4": "Registration",
-        "5": "Loans",
-        "6": "Other Services"
-    }
+#     service_mapping = {
+#         "1": "Income Tax (IT)",
+#         "2": "GST",
+#         "3": "Drafting",
+#         "4": "Registration",
+#         "5": "Loans",
+#         "6": "Other Services"
+#     }
 
-    # Initialize session if not exists
-    if phone_number not in sessions:
-        sessions[phone_number] = {
-            'user_name': user_name,
-            'last_message_id': message_id,
-            'state': 'name',
-            'data': {
-                'phone_number': phone_number,
-                'name': None,
-                'email': None,
-                'pan': None,
-                'gstin': None,
-                'service': None
-            },
-            'last_activity': datetime.now().isoformat(),
-            'last_question_asked_by_bot': "Welcome! Please provide your full name."
-        }
-        return "Welcome! Please provide your full name."
+#     # Initialize session if not exists
+#     if phone_number not in sessions:
+#         sessions[phone_number] = {
+#             'user_name': user_name,
+#             'last_message_id': message_id,
+#             'state': 'name',
+#             'data': {
+#                 'phone_number': phone_number,
+#                 'name': None,
+#                 'email': None,
+#                 'pan': None,
+#                 'gstin': None,
+#                 'service': None
+#             },
+#             'last_activity': datetime.now().isoformat(),
+#             'last_question_asked_by_bot': "Welcome! Please provide your full name."
+#         }
+#         return "Welcome! Please provide your full name."
     
-    session = sessions[phone_number]
-    session['last_message_id'] = message_id
-    session['last_activity'] = datetime.now().isoformat()
+#     session = sessions[phone_number]
+#     session['last_message_id'] = message_id
+#     session['last_activity'] = datetime.now().isoformat()
     
-    # If the user selects a service by number, update the session
-    if session['state'] == 'service' and session['data']['service'] is None and message_body.strip() in service_mapping:
-        session['data']['service'] = service_mapping[message_body.strip()]
-        session['state'] = 'completed'
+#     # If the user selects a service by number, update the session
+#     if session['state'] == 'service' and session['data']['service'] is None and message_body.strip() in service_mapping:
+#         session['data']['service'] = service_mapping[message_body.strip()]
+#         session['state'] = 'completed'
 
-    # Construct prompt
+#     # Construct prompt
 
-    print("---------------------------session state -----------------------------",session['state'])
-    prompt = f"""
-    You are a chatbot assistant managing a structured conversation flow for a WhatsApp bot.
-    Your goal is to collect the required information from the user efficiently.
+#     print("---------------------------session state -----------------------------",session['state'])
+#     prompt = f"""
+#     You are a chatbot assistant managing a structured conversation flow for a WhatsApp bot.
+#     Your goal is to collect the required information from the user efficiently.
     
-    The user has already provided the following details:
-    {session['data']}
+#     The user has already provided the following details:
+#     {session['data']}
     
-    Please follow these instructions:
-    1. Ask only for missing or None fields in the following order: Name, Email, PAN, GSTIN, and Service.
-    2. Ask each missing field in a direct, simple way (e.g., "Please provide your email").
-    3. Once all fields are filled, confirm the user's service selection.
-    4. Maintain conversation context and track progress within the session.
-    5. Do NOT ask for already provided details.
+#     Please follow these instructions:
+#     1. Ask only for missing or None fields in the following order: Name, Email, PAN, GSTIN, and Service.
+#     2. Ask each missing field in a direct, simple way (e.g., "Please provide your email").
+#     3. Once all fields are filled, confirm the user's service selection.
+#     4. Maintain conversation context and track progress within the session.
+#     5. Do NOT ask for already provided details.
     
-    The user's current session state: {session['state']} 
-    The last question asked by the bot is: "{session['last_question_asked_by_bot']}". Do not ask the same question again.
-    The user's latest message: {message_body}
+#     The user's current session state: {session['state']} 
+#     The last question asked by the bot is: "{session['last_question_asked_by_bot']}". Do not ask the same question again.
+#     The user's latest message: {message_body}
     
-    When asking for service selection, provide the options in this structured format:
+#     When asking for service selection, provide the options in this structured format:
     
-    *Services Required*  
-    ✅ *Department Selection*  
-    1️⃣ *Income Tax (IT)*  
-    2️⃣ *GST*  
-    3️⃣ *Drafting*  
-    4️⃣ *Registration*  
-    5️⃣ *Loans*  
-    6️⃣ *Other Services*  
+#     *Services Required*  
+#     ✅ *Department Selection*  
+#     1️⃣ *Income Tax (IT)*  
+#     2️⃣ *GST*  
+#     3️⃣ *Drafting*  
+#     4️⃣ *Registration*  
+#     5️⃣ *Loans*  
+#     6️⃣ *Other Services*  
     
-    Ask the user to select a service by entering the corresponding number.
+#     Ask the user to select a service by entering the corresponding number.
     
-    If all required details have been provided, respond with:  
-    "Thank you! We have collected all the necessary details. We will verify and get back to you shortly."
+#     If all required details have been provided, respond with:  
+#     "Thank you! We have collected all the necessary details. We will verify and get back to you shortly."
     
-    Do not validate the format of PAN, GSTIN, or email—just collect the input as provided.
-    """
+#     Do not validate the format of PAN, GSTIN, or email—just collect the input as provided.
+#     """
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful chatbot."},
-            {"role": "user", "content": prompt}
-        ]
-    )
+#     response = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[
+#             {"role": "system", "content": "You are a helpful chatbot."},
+#             {"role": "user", "content": prompt}
+#         ]
+#     )
 
-    bot_response = response.choices[0].message.content
+#     bot_response = response.choices[0].message.content
 
-    session['last_question_asked_by_bot'] = bot_response  
+#     session['last_question_asked_by_bot'] = bot_response  
 
-    # Update session state based on missing data
-    if session['state'] == 'name' and session['data']['name'] is None:
-        session['data']['name'] = message_body
-        session['state'] = 'email'
-    elif session['state'] == 'email' and session['data']['email'] is None:
-        session['data']['email'] = message_body
-        session['state'] = 'pan'
-    elif session['state'] == 'pan' and session['data']['pan'] is None:
-        session['data']['pan'] = message_body
-        session['state'] = 'gstin'
-    elif session['state'] == 'gstin' and session['data']['gstin'] is None:
-        session['data']['gstin'] = message_body
-        session['state'] = 'service'
+#     # Update session state based on missing data
+#     if session['state'] == 'name' and session['data']['name'] is None:
+#         session['data']['name'] = message_body
+#         session['state'] = 'email'
+#     elif session['state'] == 'email' and session['data']['email'] is None:
+#         session['data']['email'] = message_body
+#         session['state'] = 'pan'
+#     elif session['state'] == 'pan' and session['data']['pan'] is None:
+#         session['data']['pan'] = message_body
+#         session['state'] = 'gstin'
+#     elif session['state'] == 'gstin' and session['data']['gstin'] is None:
+#         session['data']['gstin'] = message_body
+#         session['state'] = 'service'
     
-    # If all fields are filled, send final confirmation
-    if session['state'] == 'completed':
-        bot_response = "Thank you! We have collected all the necessary details. We will verify and get back to you shortly."
+#     # If all fields are filled, send final confirmation
+#     if session['state'] == 'completed':
+#         bot_response = "Thank you! We have collected all the necessary details. We will verify and get back to you shortly."
 
-    logging.info("***********************************************************************")
-    logging.info("session: %s", sessions)
-    logging.info("************************************************************************")
+#     logging.info("***********************************************************************")
+#     logging.info("session: %s", sessions)
+#     logging.info("************************************************************************")
     
-    return bot_response
+#     return bot_response
 
 
 session = {}
@@ -279,13 +279,13 @@ def generate_response(body):
     
     # Initialize session only if it doesn't exist for this phone number
     if phone_number not in session:
-        session[phone_number] = {"conversation_history": []}
+        session[phone_number] = {"conversation_history": [] , "data": {} }
 
     session[phone_number]["conversation_history"].append(f"User: {message_body}")
     
     # Append the new message to existing conversation history
 
-    print("--------------------------------conversation_history---`-----------------------------",session)
+    print("--------------------------------conversation_history---------------------------------",session)
 
     Step_by_step_prompt = f"""
         You are Ai Annamalai Associates.
@@ -352,9 +352,10 @@ def generate_response(body):
         4.Do not mention the format before the user provide the details.
         """
     
+    
 
     nl_prompt_basic_step = f"""
-        You are Ai Annamalai Associates.
+       You are an Ai assistant for Annamalai Associates.
         Greet with who you are and friendly tone.
         You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
 
@@ -400,52 +401,53 @@ def generate_response(body):
           """    
     
     nl_prompt_basic_total_all_confirm = f"""
-       You are Ai Annamalai Associates.
-Greet with who you are and friendly tone.
-You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
+        You are ai assistant for Annamalai Associates.
+        Greet with who you are and friendly tone.
+        You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
 
-Conversation History:  
-Refer to the conversation history to ask the next logical question based on the user's last response. Ensure the conversation flows logically without repeating questions.
-conversation_history: {session[phone_number]["conversation_history"]}
+        Conversation History:  
+        Refer to the conversation history to ask the next logical question based on the user's last response. Ensure the conversation flows logically without repeating questions.
+        conversation_history: {session[phone_number]["conversation_history"]}
 
-current_user_message: {message_body}
+        current_user_message: {message_body}
 
-While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
+        While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
 
-1. Step-by-Step Data Collection
-   1. Start by introducing yourself and presenting the service list:
-      1. Income Tax (IT)
-      2. GST  
-      3. Drafting
-      4. Registration
-      5. Loans
-      6. Other Services
-   2. In the same initial message, ask for:
-      - The user's name
-      - Their email
-      - Whether they are an individual or a business
-      - Which service they're interested in
-   3. Once they provide this information, based on their individual/business selection:
-      1. If individual, request PAN (validate format).
-      2. If business, request GSTIN (validate format).
-   4. Confirm that all details have been recorded.
+        1. Step-by-Step Data Collection
+            1. Start by introducing yourself and presenting the service list:
+                1. Income Tax (IT)
+                2. GST  
+                3. Drafting
+                4. Registration
+                5. Loans
+                6. Other Services
+            2. In the same initial message, ask for:
+                - The user's name
+                - Their email , email validation : pattern = ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]2$.domain name spelling also (gmail.com , outlook.com ). 
+                - Whether they are an individual or a business
+                - Which service they're interested in
+            3. Once they provide this information, based on their individual/business selection:
+                1. If individual, request PAN (validate format) :  PAN should be in `ABCDE1234F` format (5 uppercase letters, 4 digits, 1 uppercase letter). If incorrect, ask them to enter a valid PAN.
+                2. If business, request GSTIN (validate format) : GSTIN should be in `22AAAAA0000A1Z5` format (2 digits, 5 uppercase letters, 4 digits, 1 uppercase letter, 1 digit, 1 uppercase letter, 1 digit). If incorrect, ask them to enter a valid GSTIN.
 
-2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
+            4. Confirm that all details have been recorded.
 
-3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
-3. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the "service" they asked and "confirmation" as true or false in json alone. do not say anything else.
-4. Must --- Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
-5. If they say thank , say regardingly.
-Rules:
-1. Do not say thank you or hello for every response.
-2. Do not ask any additional questions after collecting all required information.
-3. Make sure every response is concise.
-4. Do not mention the format before the user provides the details.
-5. Only output the dictionary when the user has confirmed their details.
+        2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
+
+        3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
+        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the "service" they asked and "confirmation" as true or false in json alone. do not say anything else.
+        5. Must --- Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
+        6. If they say thank , say regardingly.
+        Rules:
+        1. Do not say thank you or hello for every response.
+        2. Do not ask any additional questions after collecting all required information.
+        3. **Must Make sure every response is concise.
+        4. Do not mention the format before the user provides the details.
+        5. Only output the dictionary when the user has confirmed their details.
+        6. If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
 """
-
-
     
+
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -456,6 +458,61 @@ Rules:
     )
 
     bot_response = response.choices[0].message.content
+
+    print("bot response inside generate response\n",bot_response)
+
+    json_match_1 = re.search(r'\{.*\}', bot_response, re.DOTALL)
+    if json_match_1:
+
+        print("inside isinstace for str")
+
+        # json_start = response.find('{')
+        # json_end = response.rfind('}') + 1
+        # json_str = response[json_start:json_end]
+        response_dict = json.loads(json_match_1.group())
+        print("response_dict",response_dict,type(response))
+
+        if response_dict['confirmation']:
+            print("inside response dict confimation--------", response_dict['confirmation'])
+            conversation_extract_prompt = f"""
+                            Extract all user information from this conversation history into a structured format:
+                            {session[phone_number]["conversation_history"]}
+                            
+                            Extract and return ONLY a JSON object with these fields:
+                            {{
+                                "name": "user's name from conversation",
+                                "email": "user's email from conversation",
+                                "type": "Individual or Business from conversation",
+                                "pan": "PAN if Individual",
+                                "gstin": "GSTIN if Business",
+                                "service": "{response_dict.get('service', '')}",
+                                "service_questions": []
+                            }}
+                            """
+
+                # Get structured data from conversation
+            extract_response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Extract user information into JSON format only."},
+                    {"role": "user", "content": conversation_extract_prompt}
+                ]
+            )
+
+
+            # Process the extraction response
+            extract_text = extract_response.choices[0].message.content
+            print("extract_text\n",extract_text)
+
+            json_match_2 = re.search(r'\{.*\}', extract_text, re.DOTALL)
+            print("json_match_2",json_match_2)
+            if json_match_2:
+                extracted_data = json.loads(json_match_2.group())
+                print("extracted_json\n",extracted_data)
+                # Update session data
+                session[phone_number]["data"].update(extracted_data)
+                print("Updated session data:\n\n", session)  # Debug print
+
 
     session[phone_number]["conversation_history"].append(f"Bot: {bot_response}")
 
@@ -597,7 +654,7 @@ def upload_doc_to_meta_cloud(document_path):
             return media_id , uploaded_time
         else:
             logging.error("Failed to upload file:%s", response.text)
-            return None
+            return None , None
 
 
 def get_audio_message_input(recipient, media_id):
@@ -734,15 +791,13 @@ def process_whatsapp_message(body):
                                 send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
                             return
             except json.JSONDecodeError:
-                # Send both text and audio response
-                data = get_text_message_input(wa_id, response)
-                # send_message(data)
-                send_audio_response(wa_id, response)
+                pass 
+            
         else:
             # Send both text and audio response
             data = get_text_message_input(wa_id, response)
-            # send_message(data)
-            send_audio_response(wa_id, response)
+            send_message(data)
+            # send_audio_response(wa_id, response)
             
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
