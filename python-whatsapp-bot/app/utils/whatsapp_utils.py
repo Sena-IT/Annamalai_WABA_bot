@@ -464,16 +464,13 @@ def generate_response(body):
     json_match_1 = re.search(r'\{.*\}', bot_response, re.DOTALL)
     if json_match_1:
 
-        print("inside isinstace for str")
+        print("-------------------inside json_match_1 for dict--------------")
 
-        # json_start = response.find('{')
-        # json_end = response.rfind('}') + 1
-        # json_str = response[json_start:json_end]
         response_dict = json.loads(json_match_1.group())
         print("response_dict",response_dict,type(response))
 
         if response_dict['confirmation']:
-            print("inside response dict confimation--------", response_dict['confirmation'])
+            print("------------inside response dict confimation--------", response_dict['confirmation'])
             conversation_extract_prompt = f"""
                             Extract all user information from this conversation history into a structured format:
                             {session[phone_number]["conversation_history"]}
@@ -748,9 +745,51 @@ def send_audio_response(wa_id, text_response):
         logging.error(f"Error sending audio response: {e}")
         return False
 
+def update_session_data(phone_number,response_dict):
+    conversation_extract_prompt = f"""
+                            Extract all user information from this conversation history into a structured format:
+                            {session[phone_number]["conversation_history"]}
+                            
+                            Extract and return ONLY a JSON object with these fields:
+                            {{
+                                "name": "user's name from conversation",
+                                "email": "user's email from conversation",
+                                "type": "Individual or Business from conversation",
+                                "pan": "PAN if Individual",
+                                "gstin": "GSTIN if Business",
+                                "service": "{response_dict.get('service', '')}",
+                                "service_questions": []
+                            }}
+                            """
+
+                # Get structured data from conversation
+    extract_response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Extract user information into JSON format only."},
+            {"role": "user", "content": conversation_extract_prompt}
+        ]
+    )
+
+
+            # Process the extraction response
+    extract_text = extract_response.choices[0].message.content
+    print("extract_text\n",extract_text)
+
+    json_match_2 = re.search(r'\{.*\}', extract_text, re.DOTALL)
+    print("json_match_2",json_match_2)
+    if json_match_2:
+        extracted_data = json.loads(json_match_2.group())
+        print("extracted_json\n",extracted_data)
+        # Update session data
+        session[phone_number]["data"].update(extracted_data)
+        print("Updated session data:\n\n", session)  # Debug print
+
+
 def process_whatsapp_message(body):
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+    phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
     
     # Handle different message types
     if message.get("type") == "text":
@@ -774,12 +813,14 @@ def process_whatsapp_message(body):
     try:
         print("----------------------bot response--------------",response)
         # Try to parse response as JSON
-        if isinstance(response, str) and '{' in response and '}' in response:
+        # if isinstance(response, str) and '{' in response and '}' in response:
+        json_match_1 = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match_1:
             try:
-                json_start = response.find('{')
-                json_end = response.rfind('}') + 1
-                json_str = response[json_start:json_end]
-                response_dict = json.loads(json_str)
+                # json_start = response.find('{')
+                # json_end = response.rfind('}') + 1
+                # json_str = response[json_start:json_end]
+                response_dict = json.loads(json_match_1.group())
                 
                 if isinstance(response_dict, dict) and "service" in response_dict and "confirmation" in response_dict:
                     if response_dict["confirmation"]:
@@ -789,6 +830,7 @@ def process_whatsapp_message(body):
                             media_id, uploaded_time = upload_doc_to_meta_cloud(document_path)
                             if media_id:
                                 send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
+                                update_session_data(phone_number,response_dict)
                             return
             except json.JSONDecodeError:
                 pass 
