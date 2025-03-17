@@ -300,7 +300,6 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 session = {}
 def generate_response(body):
     phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
-    # user_name = body['entry'][0]['changes'][0]['value']['contacts'][0]['profile']['name']
     message_body = body['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
     # message_id = body['entry'][0]['changes'][0]['value']['messages'][0]['id']
     
@@ -431,12 +430,15 @@ def generate_response(body):
         You are ai assistant for Annamalai Associates.
         Greet with who you are and friendly tone.
         You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
-        
+                
         Conversation History:  
-        Refer to the conversation history to ask the next logical question based on the user's last response. Ensure the conversation flows logically without repeating questions.
+        Refer to the conversation history fully to ask the next logical question based on the user's last response.
+        Ensure the conversation flows logically without repeating questions.
         conversation_history: {session[phone_number]["conversation_history"]}
 
-        current_user_message: {message_body}
+        current user message : {message_body}
+
+        Refer to the user query properly and ask accordingly.
 
         While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
 
@@ -465,20 +467,19 @@ def generate_response(body):
         2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
 
         3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
-        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the related Parent "service"  like GST , Income_Tax etc.. and "confirmation" as true or false in json alone. do not say anything else.
-        5. Must --- Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
+        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the related Parent "service"  like GST , Income_Tax etc.. , "confirmation" as true or false and "sub_service" : "exact service query user asked" in json alone . do not say anything else.
+        5. Must Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
         6. If they say thank , say regardingly.
 
         Rules:
         1. Do not say thank you or hello for every response.
         2. Do not ask any additional questions after collecting all required information.
-        3. ** Must Make sure every response is concise.
+        3. Must Make sure every response is concise.
         4. Do not mention the format before the user provides the details.
-        5. Only output the dictionary when the user has confirmed their details.
+        5. do not ask the user details again and again after they submitted also.
         6. Must -- If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
         7. Do not show the services everytime.
 """
-
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -795,7 +796,7 @@ def update_session_data(phone_number,response_dict):
                                 "pan": "PAN if Individual",
                                 "gstin": "GSTIN if Business",
                                 "service": "{response_dict.get('service', '')}",
-                                "service_specific_data": [Exact service questions that user asked]
+                                "service_specific_data": "{response_dict.get('sub_service','')}"
                             }}
                             """
 
@@ -859,7 +860,7 @@ def process_whatsapp_message(body):
             try:
                 response_dict = json.loads(json_match_1.group())                
                 if isinstance(response_dict, dict) and "service" in response_dict and "confirmation" in response_dict:
-                    if response_dict["confirmation"]:
+                    if response_dict['service'] == 'GST' and response_dict["confirmation"]:
                         service_type = response_dict["service"]
                         document_path = "C:\\Users\\SENA1\\Desktop\\Whatapp bot\\python-whatsapp-bot\\app\\utils\\copy_gst_returns_sample.pdf"
                         if document_path:
@@ -871,14 +872,17 @@ def process_whatsapp_message(body):
                                     session[phone_number]['data']['status'] = 'completed'
                                     insert_response=insert_srn(session[phone_number]['data'],phone_number)
                                     if insert_response == 201 :
-                                        data = get_text_message_input(wa_id,"✅ SRN created successfully.")
+                                        message="✅ SRN created successfully for the service : "+ response_dict['sub_service']
+                                        data = get_text_message_input(wa_id,message)
                                         send_message(data)
 
-                                else:
-                                    insert_response=insert_srn(session[phone_number]['data'],phone_number) #default status pending
-                                    if insert_response == 201 :
-                                        data = get_text_message_input(wa_id,"✅ SRN created successfully.")
-                                        send_message(data)
+                    else:
+                        update_session_data(phone_number,response_dict)
+                        insert_response=insert_srn(session[phone_number]['data'],phone_number) #default status pending
+                        if insert_response == 201 :
+                            message="✅ SRN created successfully for the service : "+ response_dict['sub_service']
+                            data = get_text_message_input(wa_id,message)
+                            send_message(data)
                             return
             except json.JSONDecodeError:
                 pass 
