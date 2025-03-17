@@ -10,6 +10,9 @@ import re
 
 from dotenv import load_dotenv, set_key, find_dotenv
 
+#database
+from .database import insert_client , insert_srn , get_client_by_phone
+
 
 from app.config import load_configurations
 settings = load_configurations()
@@ -35,11 +38,35 @@ def cleanup_inactive_sessions(timeout_minutes=30):
         del sessions[phone_number]
         logging.info(f"Cleaned up inactive session for {phone_number}")
 
-# Initialize scheduler after defining the cleanup function
+def send_scheduled_whatsapp_message():
+    """Send a reminder message on the 10th of every month."""
+    recipient = os.getenv("RECIPIENT_WAID")  # Fetch recipient from environment
+    if not recipient:
+        logging.error("❌ No recipient phone number found! Skipping reminder.")
+        return
+
+    text = "Reminder: Your scheduled task for the 10th is due today!"
+
+    try:
+        message_data = get_text_message_input(recipient, text)
+        response_code = send_message(message_data)
+
+        if response_code == 200:
+            logging.info(f"✅ Reminder successfully sent to {recipient}")
+        else:
+            logging.error(f"❌ Failed to send reminder. Response Code: {response_code}")
+
+    except Exception as e:
+        logging.error(f"❌ Error sending reminder: {str(e)}")
+
+
+# Initialize scheduler after defining the cleanup function 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(cleanup_inactive_sessions, 'interval', minutes=15)  # Remove the parentheses
+scheduler.add_job(send_scheduled_whatsapp_message, 'cron', day=14, hour=22, minute=17, timezone="Asia/Kolkata")
+
 scheduler.start()
 
 def log_http_response(response):
@@ -273,13 +300,13 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 session = {}
 def generate_response(body):
     phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
-    user_name = body['entry'][0]['changes'][0]['value']['contacts'][0]['profile']['name']
+    # user_name = body['entry'][0]['changes'][0]['value']['contacts'][0]['profile']['name']
     message_body = body['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
-    message_id = body['entry'][0]['changes'][0]['value']['messages'][0]['id']
+    # message_id = body['entry'][0]['changes'][0]['value']['messages'][0]['id']
     
     # Initialize session only if it doesn't exist for this phone number
     if phone_number not in session:
-        session[phone_number] = {"conversation_history": [] , "data": {} }
+        session[phone_number] = {"data": {} , "conversation_history": [] }
 
     session[phone_number]["conversation_history"].append(f"User: {message_body}")
     
@@ -404,7 +431,7 @@ def generate_response(body):
         You are ai assistant for Annamalai Associates.
         Greet with who you are and friendly tone.
         You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
-
+        
         Conversation History:  
         Refer to the conversation history to ask the next logical question based on the user's last response. Ensure the conversation flows logically without repeating questions.
         conversation_history: {session[phone_number]["conversation_history"]}
@@ -414,101 +441,105 @@ def generate_response(body):
         While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
 
         1. Step-by-Step Data Collection
-            1. Start by introducing yourself and presenting the service list:
-                1. Income Tax (IT)
+            1. Start by introducing yourself and present the Parent service list in number format:
+                1. Income_Tax
                 2. GST  
                 3. Drafting
                 4. Registration
                 5. Loans
-                6. Other Services
-            2. In the same initial message, ask for:
+                6. Other_Services
+            2. In the same initial message, ask below details and show it in good format:
                 - The user's name
                 - Their email , email validation : pattern = ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]2$.domain name spelling also (gmail.com , outlook.com ). 
+                - Their aadhar number , aadhar number format validation : 12 digit number .
                 - Whether they are an individual or a business
                 - Which service they're interested in
             3. Once they provide this information, based on their individual/business selection:
                 1. If individual, request PAN (validate format) :  PAN should be in `ABCDE1234F` format (5 uppercase letters, 4 digits, 1 uppercase letter). If incorrect, ask them to enter a valid PAN.
                 2. If business, request GSTIN (validate format) : GSTIN should be in `22AAAAA0000A1Z5` format (2 digits, 5 uppercase letters, 4 digits, 1 uppercase letter, 1 digit, 1 uppercase letter, 1 digit). If incorrect, ask them to enter a valid GSTIN.
+            
+            4.  Checking the format of email , PAN and GSTIN data is very important.
 
-            4. Confirm that all details have been recorded.
+            5. Confirm that all details have been recorded.
 
         2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
 
         3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
-        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the "service" they asked and "confirmation" as true or false in json alone. do not say anything else.
+        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the related Parent "service"  like GST , Income_Tax etc.. and "confirmation" as true or false in json alone. do not say anything else.
         5. Must --- Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
         6. If they say thank , say regardingly.
+
         Rules:
         1. Do not say thank you or hello for every response.
         2. Do not ask any additional questions after collecting all required information.
-        3. **Must Make sure every response is concise.
+        3. ** Must Make sure every response is concise.
         4. Do not mention the format before the user provides the details.
         5. Only output the dictionary when the user has confirmed their details.
-        6. If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
+        6. Must -- If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
+        7. Do not show the services everytime.
 """
-    
 
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a helpful chatbot."},
-            {"role": "user", "content": nl_prompt_basic_total_all_confirm}
+            {"role": "user", "content":nl_prompt_basic_total_all_confirm }
         ]
     )
 
     bot_response = response.choices[0].message.content
 
-    print("bot response inside generate response\n",bot_response)
+    # print("bot response inside generate response\n",bot_response)
 
-    json_match_1 = re.search(r'\{.*\}', bot_response, re.DOTALL)
-    if json_match_1:
+    # json_match_1 = re.search(r'\{.*\}', bot_response, re.DOTALL)
+    # if json_match_1:
 
-        print("-------------------inside json_match_1 for dict--------------")
+    #     print("-------------------inside json_match_1 for dict--------------")
 
-        response_dict = json.loads(json_match_1.group())
-        print("response_dict",response_dict,type(response))
+    #     response_dict = json.loads(json_match_1.group())
+    #     print("response_dict",response_dict,type(response))
 
-        if response_dict['confirmation']:
-            print("------------inside response dict confimation--------", response_dict['confirmation'])
-            conversation_extract_prompt = f"""
-                            Extract all user information from this conversation history into a structured format:
-                            {session[phone_number]["conversation_history"]}
+        # if response_dict['confirmation']:
+            # print("------------inside response dict confimation--------", response_dict['confirmation'])
+            # conversation_extract_prompt = f"""
+            #                 Extract all user information from this conversation history into a structured format:
+            #                 {session[phone_number]["conversation_history"]}
                             
-                            Extract and return ONLY a JSON object with these fields:
-                            {{
-                                "name": "user's name from conversation",
-                                "email": "user's email from conversation",
-                                "type": "Individual or Business from conversation",
-                                "pan": "PAN if Individual",
-                                "gstin": "GSTIN if Business",
-                                "service": "{response_dict.get('service', '')}",
-                                "service_questions": []
-                            }}
-                            """
+            #                 Extract and return ONLY a JSON object with these fields:
+            #                 {{
+            #                     "name": "user's name from conversation",
+            #                     "email": "user's email from conversation",
+            #                     "type": "Individual or Business from conversation",
+            #                     "pan": "PAN if Individual",
+            #                     "gstin": "GSTIN if Business",
+            #                     "service": "{response_dict.get('service', '')}",
+            #                     "service_questions": []
+            #                 }}
+            #                 """
 
-                # Get structured data from conversation
-            extract_response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Extract user information into JSON format only."},
-                    {"role": "user", "content": conversation_extract_prompt}
-                ]
-            )
+            #     # Get structured data from conversation
+            # extract_response = client.chat.completions.create(
+            #     model="gpt-4o-mini",
+            #     messages=[
+            #         {"role": "system", "content": "Extract user information into JSON format only."},
+            #         {"role": "user", "content": conversation_extract_prompt}
+            #     ]
+            # )
 
 
-            # Process the extraction response
-            extract_text = extract_response.choices[0].message.content
-            print("extract_text\n",extract_text)
+            # # Process the extraction response
+            # extract_text = extract_response.choices[0].message.content
+            # print("extract_text\n",extract_text)
 
-            json_match_2 = re.search(r'\{.*\}', extract_text, re.DOTALL)
-            print("json_match_2",json_match_2)
-            if json_match_2:
-                extracted_data = json.loads(json_match_2.group())
-                print("extracted_json\n",extracted_data)
-                # Update session data
-                session[phone_number]["data"].update(extracted_data)
-                print("Updated session data:\n\n", session)  # Debug print
+            # json_match_2 = re.search(r'\{.*\}', extract_text, re.DOTALL)
+            # print("json_match_2",json_match_2)
+            # if json_match_2:
+            #     extracted_data = json.loads(json_match_2.group())
+            #     print("extracted_json\n",extracted_data)
+            #     # Update session data
+            #     session[phone_number]["data"].update(extracted_data)
+            #     print("Updated session data:\n\n", session)  # Debug print
 
 
     session[phone_number]["conversation_history"].append(f"Bot: {bot_response}")
@@ -527,8 +558,7 @@ def delete_uploaded_file(media_id,uploaded_time):
 
     response = requests.delete(url, headers=headers)
 
-    deleted_time = datetime.now()#.strftime("%Y-%m-%d %H:%M:%S")
-
+    deleted_time = datetime.now()
     total_deletion_time = deleted_time - uploaded_time
 
     print("---------------------- total_deletion_time -----------------------",total_deletion_time)
@@ -615,6 +645,11 @@ def send_document(phone_number, media_id, caption="",uploaded_time = None):
     response_code = send_message(data)
     if response_code == 200 :
         delete_uploaded_file(media_id,uploaded_time)
+        # insert_client(session[phone_number]['data'],phone_number)
+    return response_code
+       
+            
+
 
     
     
@@ -744,6 +779,7 @@ def send_audio_response(wa_id, text_response):
     except Exception as e:
         logging.error(f"Error sending audio response: {e}")
         return False
+    
 
 def update_session_data(phone_number,response_dict):
     conversation_extract_prompt = f"""
@@ -754,15 +790,16 @@ def update_session_data(phone_number,response_dict):
                             {{
                                 "name": "user's name from conversation",
                                 "email": "user's email from conversation",
+                                "aadhar_number" : :"user's aadhar from conversation"
                                 "type": "Individual or Business from conversation",
                                 "pan": "PAN if Individual",
                                 "gstin": "GSTIN if Business",
                                 "service": "{response_dict.get('service', '')}",
-                                "service_questions": []
+                                "service_specific_data": [Exact service questions that user asked]
                             }}
                             """
 
-                # Get structured data from conversation
+    # Get structured data from conversation
     extract_response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -771,19 +808,23 @@ def update_session_data(phone_number,response_dict):
         ]
     )
 
-
-            # Process the extraction response
+    # Process the extraction response
     extract_text = extract_response.choices[0].message.content
     print("extract_text\n",extract_text)
 
-    json_match_2 = re.search(r'\{.*\}', extract_text, re.DOTALL)
-    print("json_match_2",json_match_2)
-    if json_match_2:
-        extracted_data = json.loads(json_match_2.group())
+    json_match = re.search(r'\{.*\}', extract_text, re.DOTALL)
+    print("json_match",json_match)
+    if json_match:
+        extracted_data = json.loads(json_match.group())
         print("extracted_json\n",extracted_data)
         # Update session data
         session[phone_number]["data"].update(extracted_data)
-        print("Updated session data:\n\n", session)  # Debug print
+        print("Updated session data:\n\n", session)  
+
+    if not get_client_by_phone(phone_number) :
+        
+        insert_client(session[phone_number]['data'],phone_number)
+
 
 
 def process_whatsapp_message(body):
@@ -804,24 +845,19 @@ def process_whatsapp_message(body):
                 body["entry"][0]["changes"][0]["value"]["messages"][0]["text"] = {"body": message_body}
                 response = generate_response(body)
             else:
-                response = "I couldn't understand the audio message. Could you please type your message instead?"
+                response = "I'm having trouble processing your voice message right now. Could you please either try sending the voice message again or type your message? This will help ensure I understand your request correctly."
         else:
-            response = "Sorry, I couldn't process the audio message. Could you please type your message?"
+            response = "I'm unable to access the voice message at the moment. Please try sending your message as text instead."
     else:
         response = "I can only process text and voice messages. Please send your message in either format."
 
     try:
         print("----------------------bot response--------------",response)
         # Try to parse response as JSON
-        # if isinstance(response, str) and '{' in response and '}' in response:
         json_match_1 = re.search(r'\{.*\}', response, re.DOTALL)
         if json_match_1:
             try:
-                # json_start = response.find('{')
-                # json_end = response.rfind('}') + 1
-                # json_str = response[json_start:json_end]
-                response_dict = json.loads(json_match_1.group())
-                
+                response_dict = json.loads(json_match_1.group())                
                 if isinstance(response_dict, dict) and "service" in response_dict and "confirmation" in response_dict:
                     if response_dict["confirmation"]:
                         service_type = response_dict["service"]
@@ -829,8 +865,20 @@ def process_whatsapp_message(body):
                         if document_path:
                             media_id, uploaded_time = upload_doc_to_meta_cloud(document_path)
                             if media_id:
-                                send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
-                                update_session_data(phone_number,response_dict)
+                                uploaded_status=send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
+                                if uploaded_status == 200:
+                                    update_session_data(phone_number,response_dict)
+                                    session[phone_number]['data']['status'] = 'completed'
+                                    insert_response=insert_srn(session[phone_number]['data'],phone_number)
+                                    if insert_response == 201 :
+                                        data = get_text_message_input(wa_id,"✅ SRN created successfully.")
+                                        send_message(data)
+
+                                else:
+                                    insert_response=insert_srn(session[phone_number]['data'],phone_number) #default status pending
+                                    if insert_response == 201 :
+                                        data = get_text_message_input(wa_id,"✅ SRN created successfully.")
+                                        send_message(data)
                             return
             except json.JSONDecodeError:
                 pass 
@@ -871,30 +919,50 @@ def process_audio_to_text(audio_url):
         headers = {
             "Authorization": f"Bearer {settings.ACCESS_TOKEN}"
         }
-        audio_response = requests.get(audio_url, headers=headers)
+        audio_response = requests.get(audio_url, 
+                                        headers=headers , 
+                                        timeout=60,  # 30 seconds timeout
+                                        verify=True )
         
         if audio_response.status_code == 200:
             # Save temporarily
-            temp_file = "temp_audio.ogg" 
-            with open(temp_file, "wb") as f:
-                f.write(audio_response.content)
+            temp_file = f"temp_audio{datetime.now().timestamp()}.ogg" 
             
             try:
+                with open(temp_file, "wb") as f:
+                    f.write(audio_response.content)
+            
+            
                 # Use OpenAI Whisper API for speech-to-text
                 with open(temp_file, "rb") as audio_file:
                     transcript = client.audio.transcriptions.create(
                         model="whisper-1",
-                        file=audio_file
+                        file=audio_file,
+                        timeout=60
                     )
                     return transcript.text
+
+            except Exception as whisper_error:
+                        logging.error(f"Whisper API error: {whisper_error}")
+                        return None 
             finally:
                 # Clean up temporary file
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                     
+        else:
+            logging.error(f"Failed to download audio. Status code: {audio_response.status_code}")
+            return None
+
+    except requests.Timeout:
+        logging.error("Timeout while downloading audio file")
+        return None
+    except requests.ConnectionError:
+        logging.error("Connection error while downloading audio file")
+        return None
     except Exception as e:
-        logging.error(f"Error processing audio: {e}")
-    return None
+        logging.error(f"Error processing audio: {str(e)}")
+        return None
 
 # def validate_phone_number(data):
 

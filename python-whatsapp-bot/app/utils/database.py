@@ -3,6 +3,7 @@ import psycopg2
 import logging
 from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
+import json
 
 # Load Environment Variables
 dotenv_path = find_dotenv()
@@ -20,28 +21,55 @@ db_conn = psycopg2.connect(
 # ===========================
 # ✅ Client Operations
 # ===========================
-def insert_client(data):
+def insert_client(data, phone_number):
     """
     Insert client data into the clients table.
     """
-    query = """
-        INSERT INTO clients (name, aadhar_number, phone_number, authorized_phone_numbers, 
-        aadhar_verified, phone_number_verified, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, NOW())
-    """
-    values = (
-        data.get('name'),
-        data.get('aadhar_number'),
-        data.get('phone_number'),
-        json.dumps(data.get('authorized_phone_numbers')),
-        data.get('aadhar_verified'),
-        data.get('phone_number_verified')
-    )
-    
-    with db_conn.cursor() as cursor:
+    cursor = None
+    try:
+        # Validate required fields
+        if not data.get('name'):
+            logging.error("❌ Client name is required")
+            return False
+            
+        query = """
+            INSERT INTO clients (name, aadhar_number, phone_number, authorized_phone_numbers, 
+            aadhar_verified, phone_number_verified, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (phone_number) DO UPDATE 
+            SET name = EXCLUDED.name,
+                aadhar_number = EXCLUDED.aadhar_number,
+                authorized_phone_numbers = EXCLUDED.authorized_phone_numbers,
+                aadhar_verified = EXCLUDED.aadhar_verified,
+                phone_number_verified = EXCLUDED.phone_number_verified
+            RETURNING client_id
+        """
+        
+        values = (
+            data.get('name'),
+            data.get('aadhar_number'),
+            phone_number,
+            json.dumps(data.get('authorized_phone_numbers', [])),
+            data.get('aadhar_verified', False),
+            data.get('phone_number_verified', False)
+        )
+        
+        cursor = db_conn.cursor()
         cursor.execute(query, values)
+        client_id = cursor.fetchone()[0]
         db_conn.commit()
-        logging.info("✅ Client inserted successfully.")
+        logging.info("✅ Client inserted/updated successfully with ID: %s", client_id)
+        return True
+        
+    except psycopg2.Error as e:
+        if db_conn:
+            db_conn.rollback()
+        logging.error("❌ Error inserting client: %s", e)
+        return False
+        
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def get_client_by_phone(phone_number):
@@ -70,29 +98,78 @@ def get_client_by_phone(phone_number):
 # ===========================
 # ✅ SRN Operations
 # ===========================
-def insert_srn(data):
+def insert_srn(session_data, phone_number):
     """
     Insert SRN data into srns table.
     """
-    query = """
-        INSERT INTO srns (client_id, service_id, due_date, task_type, status, 
-        payment_status, service_specific_data, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-    """
-    values = (
-        data.get('client_id'),
-        data.get('service_id'),
-        data.get('due_date'),
-        data.get('task_type'),
-        data.get('status'),
-        data.get('payment_status'),
-        json.dumps(data.get('service_specific_data'))
-    )
-    
-    with db_conn.cursor() as cursor:
+    cursor = None
+    try:
+        # # First ensure client insertion was successful
+        # if not insert_client(session_data, phone_number):
+        #     logging.error("❌ Failed to insert/update client data")
+        #     return
+            
+        # Get client_id
+        client = get_client_by_phone(phone_number)
+        print("------------insert srn---- client ---------", client)
+        if not client:
+            logging.error("❌ Client not found for phone number: %s", phone_number)
+            return
+            
+        client_id = client['client_id']
+        
+        cursor = db_conn.cursor()
+        
+        # Fetch the service_id based on the service_name
+        service_name = session_data.get('service', 'GST')  # Default to GST if not specified
+        service_id_query = "SELECT service_id FROM service WHERE service_name = %s"
+        cursor.execute(service_id_query, (service_name,))
+        service_id_result = cursor.fetchone()
+
+        print("session data insert srn",session_data)
+        
+        if not service_id_result:
+            logging.error("❌ Service ID not found for service_name '%s'.", service_name)
+            return
+            
+        service_id = service_id_result[0]
+        
+        # Insert SRN data with default values where needed
+        query = """
+            INSERT INTO srn (client_id, service_id, due_date, task_type, status, 
+            payment_status, service_specific_data, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+        """
+        values = (
+            client_id,
+            service_id,
+            session_data.get('due_date', None),
+            session_data.get('task_type'),
+            session_data.get('status' , "Pending"),
+            session_data.get('payment_status','Unpaid'),
+            json.dumps(session_data.get('service_specific_data', {}))
+        )
+        
         cursor.execute(query, values)
         db_conn.commit()
-        logging.info("✅ SRN inserted successfully.")
+                
+        if cursor.rowcount > 0:
+            logging.info("✅ SRN inserted successfully.")
+            status_code = 201  # Created
+        else:
+            logging.warning("⚠️ No rows affected.")
+            status_code = 400  # Bad Request (or relevant code)
+            logging.info("✅ SRN inserted successfully.")
+        return status_code
+                
+    except Exception as e:
+        if db_conn:
+            db_conn.rollback()
+        logging.error("❌ Error inserting SRN: %s", str(e))
+        
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def get_srn_by_client(client_id):

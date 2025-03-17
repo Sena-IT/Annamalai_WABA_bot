@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     PHONE_NUMBER_ID: str
     VERIFY_TOKEN: str
     OPENAI_API_KEY: Optional[str] = None
+    DB_HOST : str
+    DB_PORT : str
+    DB_NAME : str
+    DB_USER : str
+    DB_PASSWORD : str
     class Config:
         env_file = ".env"
         case_sensitive = True
