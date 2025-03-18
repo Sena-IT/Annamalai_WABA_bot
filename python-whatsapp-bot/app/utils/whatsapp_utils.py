@@ -24,7 +24,7 @@ load_dotenv(dotenv_path)
 sessions = {}
 
 # Define cleanup function before using it
-def cleanup_inactive_sessions(timeout_minutes=30):
+def cleanup_inactive_sessions(timeout_minutes=5):
     """Remove sessions that have been inactive for more than timeout_minutes"""
     current_time = datetime.now()
     inactive_sessions = []
@@ -308,6 +308,9 @@ def generate_response(body):
         session[phone_number] = {"data": {} , "conversation_history": [] }
 
     session[phone_number]["conversation_history"].append(f"User: {message_body}")
+
+    client_data = get_client_by_phone(phone_number)
+
     
     # Append the new message to existing conversation history
 
@@ -467,6 +470,71 @@ def generate_response(body):
         2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
 
         3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
+        
+        4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the related Parent "service"  like GST , Income_Tax etc.. , "confirmation" as true or false and "sub_service" : "exact service query user asked" in json alone . do not say anything else.
+        
+        5. Must Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
+        
+        6. If they say thank , say regardingly.
+
+        Rules:
+        1. Do not say thank you or hello for every response.
+        2. Do not ask any additional questions after collecting all required information.
+        3. Must Make sure every response is concise.
+        4. Do not mention the format before the user provides the details.
+        5. do not ask the user details again and again after they submitted also.
+        6. Must - If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
+        7. Do not show the services everytime.
+        8. Do not hallucinate.
+"""
+    
+    print("----------client data ----------------",client_data)
+    
+    nl_prompt_testing = f"""
+        You are ai assistant for Annamalai Associates.
+        Greet with who you are and friendly tone.
+        You guide users step by step, ensuring a smooth and engaging conversation while tracking conversation history to ask the next relevant question.
+
+        client db data : {client_data}
+        If the client data are already available in db , do not ask then the details like name , email ,aadhar and other directly show the services and ask individual or business and  what service they want .
+
+
+        Conversation History:  
+        Refer to the conversation history fully to ask the next logical question based on the user's last response.
+        Ensure the conversation flows logically without repeating questions.
+        conversation_history: {session[phone_number]["conversation_history"]}
+
+        current user message : {message_body}
+
+        Refer to the user query properly and ask accordingly.
+
+        While providing a response to the user, sound like a human and use a professional tone. Do not return responses based on who said what.
+
+        1. Step-by-Step Data Collection
+            1. Start by introducing yourself and present the Parent service list in number format:
+                1. Income_Tax
+                2. GST  
+                3. Drafting
+                4. Registration
+                5. Loans
+                6. Other_Services
+            2. In the same initial message, ask below details and show it in good format:
+                - The user's name
+                - Their email , email validation : pattern = ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]2$.domain name spelling also (gmail.com , outlook.com ). 
+                - Their aadhar number , aadhar number format validation : 12 digit number .
+                - Whether they are an individual or a business
+                - Which service they're interested in
+            3. Once they provide this information, based on their individual/business selection:
+                1. If individual, request PAN (validate format) :  PAN should be in `ABCDE1234F` format (5 uppercase letters, 4 digits, 1 uppercase letter). If incorrect, ask them to enter a valid PAN.
+                2. If business, request GSTIN (validate format) : GSTIN should be in `22AAAAA0000A1Z5` format (2 digits, 5 uppercase letters, 4 digits, 1 uppercase letter, 1 digit, 1 uppercase letter, 1 digit). If incorrect, ask them to enter a valid GSTIN.
+            
+            4.  Checking the format of email , PAN and GSTIN data is very important.
+
+            5. Confirm that all details have been recorded.
+
+        2. Once all details are collected, immediately summarize the information and ask for confirmation: "Are these details correct?"
+
+        3. If the user confirms , do not send summary again , only return the service they asked and confirmation as true or false in json.
         4. You must check for last line of conversation history. If the user response is **Yes or Correct** then you must return only the related Parent "service"  like GST , Income_Tax etc.. , "confirmation" as true or false and "sub_service" : "exact service query user asked" in json alone . do not say anything else.
         5. Must Once confimed , after ask if they want any service. do not give that json file again if user asks any futher unrelated questions.
         6. If they say thank , say regardingly.
@@ -479,8 +547,10 @@ def generate_response(body):
         5. do not ask the user details again and again after they submitted also.
         6. Must -- If any format is wrong , ask them to enter it correctly. Do not show the pattern to them.
         7. Do not show the services everytime.
+        8. Do not hallucinate.
 """
     
+    print("********* convo new hsitory **********",session[phone_number]["conversation_history"])
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -832,6 +902,8 @@ def process_whatsapp_message(body):
     wa_id = body["entry"][0]["changes"][0]["value"]["contacts"][0]["wa_id"]
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
     phone_number = body['entry'][0]['changes'][0]['value']['contacts'][0]['wa_id']
+
+    print("----------------------body---------------------",body)
     
     # Handle different message types
     if message.get("type") == "text":

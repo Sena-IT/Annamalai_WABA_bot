@@ -16,28 +16,49 @@ settings = load_configurations()
 
 print("SETTINGS",settings)
 
-@app.get("/webhook")
-async def verify_webhook(
-    hub_mode: str = None,
-    hub_verify_token: str = None,
-    hub_challenge: str = None
-):
-    """Webhook verification endpoint for WhatsApp"""
-    if not all([hub_mode, hub_verify_token]):
-        raise HTTPException(
-            status_code=400,
-            detail="Missing parameters"
-        )
+# @app.get("/webhook")
+# async def verify_webhook(
+#     hub_mode: str = None,
+#     hub_verify_token: str = None,
+#     hub_challenge: str = None
+# ):
+#     """Webhook verification endpoint for WhatsApp"""
+#     if not all([hub_mode, hub_verify_token]):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Missing parameters"
+#         )
     
+#     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
+#         logging.info("WEBHOOK_VERIFIED")
+#         return Response(content=hub_challenge)
+#     else:
+#         logging.info("VERIFICATION_FAILED")
+#         raise HTTPException(
+#             status_code=403,
+#             detail="Verification failed"
+#         )
+    
+
+@app.get("/webhook")
+async def verify_webhook(request: Request):
+    """Webhook verification endpoint for WhatsApp"""
+    params = request.query_params
+
+    hub_mode = params.get("hub.mode")
+    hub_verify_token = params.get("hub.verify_token")
+    hub_challenge = params.get("hub.challenge")
+
+    if not hub_mode or not hub_verify_token or not hub_challenge:
+        logging.error("🚨 Missing parameters in webhook verification request")
+        raise HTTPException(status_code=400, detail="Missing parameters")
+
     if hub_mode == "subscribe" and hub_verify_token == settings.VERIFY_TOKEN:
-        logging.info("WEBHOOK_VERIFIED")
-        return Response(content=hub_challenge)
+        logging.info("✅ WEBHOOK_VERIFIED")
+        return Response(content=hub_challenge, media_type="text/plain")
     else:
-        logging.info("VERIFICATION_FAILED")
-        raise HTTPException(
-            status_code=403,
-            detail="Verification failed"
-        )
+        logging.error("❌ VERIFICATION_FAILED: Invalid token")
+        raise HTTPException(status_code=403, detail="Verification failed")
 
 @app.post("/webhook")
 async def webhook_handler(
@@ -60,6 +81,7 @@ async def webhook_handler(
         .get("value", {})
         .get("statuses")):
         logging.info("Received a WhatsApp status update.")
+        print("--------status body---------", body)
         return {"status": "ok"}
 
     try:

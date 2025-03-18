@@ -144,9 +144,9 @@ def insert_srn(session_data, phone_number):
             client_id,
             service_id,
             session_data.get('due_date', None),
-            session_data.get('task_type'),
-            session_data.get('status' , "Pending"),
-            session_data.get('payment_status','Unpaid'),
+            session_data.get('task_type', "non-recurring"),
+            session_data.get('status' , "pending"),
+            session_data.get('payment_status','unpaid'),
             json.dumps(session_data.get('service_specific_data', {}))
         )
         
