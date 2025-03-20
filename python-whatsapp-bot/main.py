@@ -59,7 +59,8 @@ async def verify_webhook(request: Request):
     else:
         logging.error("❌ VERIFICATION_FAILED: Invalid token")
         raise HTTPException(status_code=403, detail="Verification failed")
-
+    
+processed_messages = set()
 @app.post("/webhook")
 async def webhook_handler(
     request: Request,
@@ -81,11 +82,18 @@ async def webhook_handler(
         .get("value", {})
         .get("statuses")):
         logging.info("Received a WhatsApp status update.")
-        print("--------status body---------", body)
+        # print("--------status body---------", body)
         return {"status": "ok"}
 
     try:
         if is_valid_whatsapp_message(body):
+            message_id =body["entry"][0]["changes"][0]["value"]["messages"][0]["id"]
+            if message_id in processed_messages:
+                print("Duplicate message detected. Ignoring.")
+                return  {"status" : "ok"}# Prevent re-processing
+
+            processed_messages.add(message_id)
+
             process_whatsapp_message(body)
             return {"status": "ok"}
         else:

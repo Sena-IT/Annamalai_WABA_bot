@@ -98,18 +98,35 @@ def get_client_by_phone(phone_number):
 # ===========================
 # ✅ SRN Operations
 # ===========================
+def get_latest_srn_number():
+    """
+    Get the latest SRN number for the current month and year
+    """
+    current_date = datetime.now()
+    month_year_prefix = current_date.strftime("%m%y")
+    
+    query = """
+        SELECT srn_id FROM srn 
+        WHERE srn_id LIKE %s 
+        ORDER BY srn_id DESC LIMIT 1
+    """
+    
+    with db_conn.cursor() as cursor:
+        cursor.execute(query, (f"{month_year_prefix}%",))
+        result = cursor.fetchone()
+        
+        if result:
+            # Extract the numeric part and increment
+            last_number = int(result[0][-4:])
+            return last_number + 1
+        return 1
+
 def insert_srn(session_data, phone_number):
     """
     Insert SRN data into srns table.
     """
     cursor = None
     try:
-        # # First ensure client insertion was successful
-        # if not insert_client(session_data, phone_number):
-        #     logging.error("❌ Failed to insert/update client data")
-        #     return
-            
-        # Get client_id
         client = get_client_by_phone(phone_number)
         print("------------insert srn---- client ---------", client)
         if not client:
@@ -120,8 +137,14 @@ def insert_srn(session_data, phone_number):
         
         cursor = db_conn.cursor()
         
+        # Generate SRN ID
+        current_date = datetime.now()
+        month_year_prefix = current_date.strftime("%m%y")
+        next_number = get_latest_srn_number()
+        srn_id = f"{month_year_prefix}{next_number:04d}"
+        
         # Fetch the service_id based on the service_name
-        service_name = session_data.get('service', 'GST')  # Default to GST if not specified
+        service_name = session_data.get('service', 'GST')
         service_id_query = "SELECT service_id FROM service WHERE service_name = %s"
         cursor.execute(service_id_query, (service_name,))
         service_id_result = cursor.fetchone()
@@ -134,13 +157,14 @@ def insert_srn(session_data, phone_number):
             
         service_id = service_id_result[0]
         
-        # Insert SRN data with default values where needed
+        # Modified query to include srn_id
         query = """
-            INSERT INTO srn (client_id, service_id, due_date, task_type, status, 
+            INSERT INTO srn (srn_id, client_id, service_id, due_date, task_type, status, 
             payment_status, service_specific_data, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
         """
         values = (
+            srn_id,
             client_id,
             service_id,
             session_data.get('due_date', None),
@@ -154,13 +178,12 @@ def insert_srn(session_data, phone_number):
         db_conn.commit()
                 
         if cursor.rowcount > 0:
-            logging.info("✅ SRN inserted successfully.")
-            status_code = 201  # Created
+            logging.info("✅ SRN inserted successfully with ID: %s", srn_id)
+            status_code = 201
         else:
             logging.warning("⚠️ No rows affected.")
-            status_code = 400  # Bad Request (or relevant code)
-            logging.info("✅ SRN inserted successfully.")
-        return status_code
+            status_code = 400
+        return status_code , srn_id
                 
     except Exception as e:
         if db_conn:
