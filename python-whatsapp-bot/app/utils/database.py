@@ -34,14 +34,25 @@ def insert_client(data, phone_number):
             
         query = """
             INSERT INTO clients (name, aadhar_number, phone_number, authorized_phone_numbers, 
-            aadhar_verified, phone_number_verified, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NOW())
+            aadhar_verified, phone_number_verified, pan, pan_verified, gstin, gstin_verified, 
+            email, email_validated, aadhar_number_validated, pan_validated, gstin_validated, client_type, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             ON CONFLICT (phone_number) DO UPDATE 
             SET name = EXCLUDED.name,
                 aadhar_number = EXCLUDED.aadhar_number,
                 authorized_phone_numbers = EXCLUDED.authorized_phone_numbers,
                 aadhar_verified = EXCLUDED.aadhar_verified,
-                phone_number_verified = EXCLUDED.phone_number_verified
+                phone_number_verified = EXCLUDED.phone_number_verified,
+                pan = EXCLUDED.pan,
+                pan_verified = EXCLUDED.pan_verified,
+                gstin = EXCLUDED.gstin,
+                gstin_verified = EXCLUDED.gstin_verified,
+                email = EXCLUDED.email,
+                email_validated = EXCLUDED.email_validated,
+                aadhar_number_validated = EXCLUDED.aadhar_number_validated,
+                pan_validated = EXCLUDED.pan_validated,
+                gstin_validated = EXCLUDED.gstin_validated,
+                client_type = EXCLUDED.client_type
             RETURNING client_id
         """
         
@@ -51,7 +62,17 @@ def insert_client(data, phone_number):
             phone_number,
             json.dumps(data.get('authorized_phone_numbers', [])),
             data.get('aadhar_verified', False),
-            data.get('phone_number_verified', False)
+            data.get('phone_number_verified', False),
+            data.get('pan'),
+            data.get('pan_verified', False),
+            data.get('gstin'),
+            data.get('gstin_verified', False),
+            data.get('email'),
+            data.get('email_validated', False),
+            data.get('aadhar_number_validated', False),
+            data.get('pan_validated', False),
+            data.get('gstin_validated', False),
+            data.get('client_type')  # Fixed column name
         )
         
         cursor = db_conn.cursor()
@@ -71,13 +92,15 @@ def insert_client(data, phone_number):
         if cursor:
             cursor.close()
 
-
 def get_client_by_phone(phone_number):
     """
-    Fetch client details by phone number.
+    Fetch client details by phone number, including validation fields.
     """
     query = """
-        SELECT client_id, name, aadhar_number, phone_number, authorized_phone_numbers
+        SELECT client_id, name, aadhar_number, phone_number, authorized_phone_numbers, 
+               pan, pan_verified, gstin, gstin_verified, client_type, email, 
+               email_validated, aadhar_number_validated, pan_validated, gstin_validated,
+               aadhar_verified, phone_number_verified, created_at
         FROM clients
         WHERE phone_number = %s
     """
@@ -90,11 +113,23 @@ def get_client_by_phone(phone_number):
                 "name": result[1],
                 "aadhar_number": result[2],
                 "phone_number": result[3],
-                "authorized_phone_numbers": result[4]
+                "authorized_phone_numbers": result[4],
+                "pan": result[5],
+                "pan_verified": result[6],
+                "gstin": result[7],
+                "gstin_verified": result[8],
+                "client_type": result[9],
+                "email": result[10],
+                "email_validated": result[11],
+                "aadhar_number_validated": result[12],
+                "pan_validated": result[13],
+                "gstin_validated": result[14],
+                "aadhar_verified": result[15],  # Added missing field
+                "phone_number_verified": result[16],  # Added missing field
+                "created_at": result[17]  # Added missing field
             }
         return None
-
-
+    
 # ===========================
 # ✅ SRN Operations
 # ===========================
@@ -171,7 +206,7 @@ def insert_srn(session_data, phone_number):
             session_data.get('task_type', "non-recurring"),
             session_data.get('status' , "pending"),
             session_data.get('payment_status','unpaid'),
-            json.dumps(session_data.get('service_specific_data', {}))
+            json.dumps(session_data.get('sub_service', {}))
         )
         
         cursor.execute(query, values)
