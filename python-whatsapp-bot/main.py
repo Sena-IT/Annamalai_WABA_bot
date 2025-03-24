@@ -6,6 +6,7 @@ from app.utils.whatsapp_utils import process_whatsapp_message, is_valid_whatsapp
 from app.decorators.security import signature_required
 from typing import Optional
 import json
+from app.utils.reminders import scheduler 
 
 # Initialize FastAPI app
 app = FastAPI(title="WhatsApp Bot API")

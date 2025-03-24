@@ -25,21 +25,6 @@ load_dotenv(dotenv_path)
 # Replace the single data_history with a sessions dictionary
 sessions = {}
 
-# Define cleanup function before using it
-def cleanup_inactive_sessions(timeout_minutes=5):
-    """Remove sessions that have been inactive for more than timeout_minutes"""
-    current_time = datetime.now()
-    inactive_sessions = []
-    
-    for phone_number, session in sessions.items():
-        last_activity = datetime.fromisoformat(session['last_activity'])
-        if (current_time - last_activity).total_seconds() > timeout_minutes * 60:
-            inactive_sessions.append(phone_number)
-    
-    for phone_number in inactive_sessions:
-        del sessions[phone_number]
-        logging.info(f"Cleaned up inactive session for {phone_number}")
-
 def send_scheduled_whatsapp_message():
     """Send a reminder message on the 10th of every month."""
     recipient = os.getenv("RECIPIENT_WAID")  # Fetch recipient from environment
@@ -62,14 +47,7 @@ def send_scheduled_whatsapp_message():
         logging.error(f"❌ Error sending reminder: {str(e)}")
 
 
-# Initialize scheduler after defining the cleanup function 
-from apscheduler.schedulers.background import BackgroundScheduler
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(cleanup_inactive_sessions, 'interval', minutes=15)  # Remove the parentheses
-scheduler.add_job(send_scheduled_whatsapp_message, 'cron', day=14, hour=22, minute=17, timezone="Asia/Kolkata")
-
-scheduler.start()
 
 def log_http_response(response):
     logging.info(f"Status: {response.status_code}")
@@ -592,12 +570,136 @@ def generate_response(body):
         9. Update session data only with relevant key-value responses from the user.
         10. Use bullets or clear structure in responses where needed.
         11. Do not validate any field. Do not confused with history , if new entry came , its null and false in validation.
+        12. service and sub_service are must to fill dont leave it null once user provided service.
 
         ### Output:
         - Return JSON with updated session data.
     """
 
     new_prompt_3_1 = f"""
+        You are an AI assistant for Annamalai Associates.
+        Greet the user warmly and professionally, introducing yourself.
+        Guide users step-by-step through a smooth conversation, tracking responses to ask the next relevant question.
+        **Always include a response in 'llm_response'—never leave it null.**
+        **If user give confirmation to service confimrmation , update service_confirmation ,service and sub_service in session data**
+
+        Session data: {sessions[phone_number]}
+
+        Update each response in {sessions[phone_number]['llm_response']} and return the full session data in JSON format.
+
+        Use conversation history {sessions[phone_number]["conversation_history"]} to determine the next logical question based on the user's last response.
+
+        Current user message: {message_body}
+
+        Respond appropriately in a human-like, professional tone.
+
+        ### How to Collect Information:
+        1. **Initial Greeting:**
+           - If client exists (name already in session data):
+             - Present Parent services list:
+               1. Income_Tax
+               2. GST  
+               3. Drafting
+               4. Registration
+               5. Loans
+               6. Other_Services
+             - Ask which service they are interested in.
+           - If new client (name not in session data):
+             - In one message:
+               - Present Parent services list (as above).
+               - Ask for:
+                 - Name
+                 - Email
+                 - Aadhar number
+                 - Individual or business
+                 - Which service they are interested in.
+
+        2. **Extract Details:**
+           - From user's reply, extract:
+             - PAN
+             - GSTIN
+             - Phone number
+             - Email
+             - Aadhar number
+           - Store in {sessions[phone_number]['data']}.
+           - If a field (e.g., PAN, email, Aadhar, GSTIN) is updated by the user in their response:
+             - Update the field in {sessions[phone_number]['data']}.
+             - Reset its corresponding validation field (e.g., pan_validated, email_validated, aadhar_number_validated, gstin_validated) to false to ensure re-validation.
+
+        3. **Follow-Up:**
+           - If client type already exists in session data, do not ask again:
+             - If client type is individual: ask only PAN if not already provided.
+             - If client type is business: ask only GSTIN if not already provided.
+           - For existing clients, after they provide the service, do not process the request yet—proceed to summarize their details.
+           - For new clients, confirm details recorded with a message.
+
+        4. **Summarize:**
+           - For both new and existing clients:
+             - Summarize all details collected so far (e.g., name, email, Aadhar, client type, PAN/GSTIN if available, and the selected service).
+             - Ask: "Are these details correct?"
+           - Do not proceed with the service request (e.g., sending documents) until confirmation is received.
+
+        5. **Confirmation:**
+           - Do not modify {sessions[phone_number]['data']["service_confirmation"]} until explicit user confirmation.
+           - If user responds with "Yes," "yep," or "Correct":
+             - Set {sessions[phone_number]['llm_response']} to "confirmed".
+             - Must Update {sessions[phone_number]['data']["service"]} with exact Parent service name from ['Income_Tax', 'GST', 'Drafting', 'Registration', 'Loans', 'Other_Services'].
+             - Update {sessions[phone_number]['data']["sub_service"]} with user asked service related query.
+             - Set {sessions[phone_number]['data']["service_confirmation"]} to true.
+           - If no such response is received, ensure {sessions[phone_number]['data']["service_confirmation"]} remains false.
+
+        6. **Post-Confirmation:**
+           - Set {sessions[phone_number]['llm_response']} to "confirmed" alone.
+
+        7. **Closure:**
+           - If user says "thank you," reply: "You're welcome! Let me know if you need further help."
+
+        ### Rules:
+        1. Keep validation fields (e.g., email_validated) false by default—do not change them.
+        2. Keep responses concise.
+        3. Don’t explain format unless asked.
+        4. Don’t repeat questions after details are provided.
+        5. If a detail is incorrect, ask to correct it without showing the pattern.
+        6. Don’t repeat service list after initial message.
+        7. Stick to facts—don’t assume or invent.
+        8. Stop asking questions once all details are collected.
+        9. Update session data only with relevant key-value responses from the user.
+        10. Use bullets or clear structure in responses where needed.
+        11. asking for the confirmation is must before setting true to service_confirmation.
+        12. service and sub_service are must to fill dont leave it null once user provided service.
+
+
+        ### Output:
+        - Return JSON with updated session data.
+
+        ### Example Output Format:
+        ```json
+        {{
+            "last_message_id": "wamid.123456789",
+            "state": "service",
+            "data": {{
+                "phone_number": "919876543210",
+                "name": "John Doe",
+                "aadhar_number": "123456789012",
+                "aadhar_number_validated": true,
+                "client_type": "individual",
+                "email": "john.doe@example.com",
+                "email_validated": true,
+                "pan": "ABCDE1234F",
+                "pan_validated": true,
+                "gstin": null,
+                "gstin_validated": false,
+                "service": "Income_Tax",
+                "service_confirmation": true,
+                "sub_service": "i want copy of income tax report"
+            }},
+            "llm_response": "confirmed",
+            "conversation_history": []
+        }}
+
+    """
+
+    new_prompt_3_1_git = f"""
         You are an AI assistant for Annamalai Associates.
         Greet the user warmly and professionally, introducing yourself.
         Guide users step-by-step through a smooth conversation, tracking responses to ask the next relevant question.
@@ -660,8 +762,8 @@ def generate_response(body):
            - Do not proceed with the service request (e.g., sending documents) until confirmation is received.
 
         5. **Confirmation:**
-           - Do not modify {sessions[phone_number]['data']["service_confirmation"]} until explicit user confirmation.
-           - If user responds with "Yes," "yep," or "Correct":
+           - Do not modify {sessions[phone_number]['data']["service_confirmation"]} until explicit user confirmation for above summary.
+           - If the user confirms , do not send summary again and 
              - Set {sessions[phone_number]['llm_response']} to "confirmed".
              - Update {sessions[phone_number]['data']["service"]} with exact Parent service name from ['Income_Tax', 'GST', 'Drafting', 'Registration', 'Loans', 'Other_Services'].
              - Update {sessions[phone_number]['data']["sub_service"]} with the exact service user requested.
@@ -680,12 +782,13 @@ def generate_response(body):
         2. Keep responses concise.
         3. Don’t explain format unless asked.
         4. Don’t repeat questions after details are provided.
-        5. If a detail is incorrect, ask to correct it without showing the pattern.
-        6. Don’t repeat service list after initial message.
-        7. Stick to facts—don’t assume or invent.
-        8. Stop asking questions once all details are collected.
-        9. Update session data only with relevant key-value responses from the user.
-        10. Use bullets or clear structure in responses where needed.
+        5. Don’t repeat service list after initial message.
+        6. Stick to facts—don’t assume or invent.
+        7. Stop asking questions once all details are collected.
+        8. Update session data only with relevant key-value responses from the user.
+        9. Use bullets or clear structure in responses where needed.
+        10. Give preference to incomeing updated value than existing history value.
+        11. Parent service name is case sensitive it has to be exactly as in that list.
 
         ### Output:
         - Return JSON with updated session data.
@@ -963,51 +1066,6 @@ def send_audio_response(wa_id, text_response):
     except Exception as e:
         logging.error(f"Error sending audio response: {e}")
         return False
-    
-
-def update_session_data(phone_number,response_dict):
-    conversation_extract_prompt = f"""
-                            Extract all user information from this conversation history into a structured format:
-                            {session[phone_number]["conversation_history"]}
-                            
-                            Extract and return ONLY a JSON object with these fields:
-                            {{
-                                "name": "user's name from conversation",
-                                "email": "user's email from conversation",
-                                "aadhar_number" : :"user's aadhar from conversation"
-                                "type": "Individual or Business from conversation",
-                                "pan": "PAN if Individual",
-                                "gstin": "GSTIN if Business",
-                                "service": "{response_dict.get('service', '')}",
-                                "service_specific_data": "{response_dict.get('sub_service','')}"
-                            }}
-                            """
-
-    # Get structured data from conversation
-    extract_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Extract user information into JSON format only."},
-            {"role": "user", "content": conversation_extract_prompt}
-        ]
-    )
-
-    # Process the extraction response
-    extract_text = extract_response.choices[0].message.content
-    print("extract_text\n",extract_text)
-
-    json_match = re.search(r'\{.*\}', extract_text, re.DOTALL)
-    print("json_match",json_match)
-    if json_match:
-        extracted_data = json.loads(json_match.group())
-        print("extracted_json\n",extracted_data)
-        # Update session data
-        session[phone_number]["data"].update(extracted_data)
-        print("Updated session data:\n\n", session)  
-
-    if not get_client_by_phone(phone_number) :
-        
-        insert_client(sessions[phone_number]['data'],phone_number)
 
 
 
@@ -1056,14 +1114,19 @@ def process_whatsapp_message(body):
                     if media_id:
                         uploaded_status=send_document(wa_id, media_id, f"Here is your {service_type} document", uploaded_time)
                         if uploaded_status == 200:
-                            
+                                       
                             sessions[phone_number]['data']['status'] = 'completed'
                             print("++++++++++++++++inside gst insert++++++++++++++++++")
+                            print("session data before insert srn",sessions[phone_number]['data'])
                             insert_response , srn_id =insert_srn(sessions[phone_number]['data'],phone_number)
                             if insert_response == 201 :
                                 message=f"✅ SRN ({srn_id}) created successfully for your service  "#,sessions[phone_number]['data']['sub_service']
                                 data = get_text_message_input(wa_id,message)
                                 send_message(data)
+                                sessions[phone_number]['data']["service_confirmation"] = False
+                                sessions[phone_number]['data']['service']=None
+                                sessions[phone_number]['data']['sub_service']=None
+                                print("updated sessions after confimation",sessions)
                                 return
 
             else:
@@ -1072,9 +1135,13 @@ def process_whatsapp_message(body):
                     insert_client(sessions[phone_number]['data'],phone_number)
                 insert_response,srn_id=insert_srn(sessions[phone_number]['data'],phone_number) #default status pending
                 if insert_response == 201 :
-                    message=f"✅ SRN ({srn_id}) created successfully for the service : ",sessions[phone_number]['data']['sub_service']
+                    message=f"✅ SRN ({srn_id}) created successfully for your service "#,sessions[phone_number]['data']['sub_service']
                     data = get_text_message_input(wa_id,message)
                     send_message(data)
+                    sessions[phone_number]['data']["service_confirmation"] = False
+                    sessions[phone_number]['data']['service']=None
+                    sessions[phone_number]['data']['sub_service']=None
+                    print("updated sessions after confimation",sessions)
                     return
         
         else:
