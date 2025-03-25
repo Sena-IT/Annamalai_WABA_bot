@@ -11,23 +11,6 @@ from .database import get_clients_reminders
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-
-
-# Define cleanup function before using it
-def cleanup_inactive_sessions(timeout_minutes=5):
-    """Remove sessions that have been inactive for more than timeout_minutes"""
-    current_time = datetime.now()
-    inactive_sessions = []
-    
-    for phone_number, session in sessions.items():
-        last_activity = datetime.fromisoformat(session['last_activity'])
-        if (current_time - last_activity).total_seconds() > timeout_minutes * 60:
-            inactive_sessions.append(phone_number)
-    
-    for phone_number in inactive_sessions:
-        del sessions[phone_number]
-        logging.info(f"Cleaned up inactive session for {phone_number}")
-
     
 
 def send_scheduled_whatsapp_message():
@@ -54,7 +37,7 @@ def send_scheduled_whatsapp_message():
         logging.error(f"❌ Error sending reminder: {str(e)}")
 
 def reminder():
-    print("inside reminder")
+    print("inside")
 
     current_time = datetime.now()
     if hasattr(reminder, 'last_run'):
@@ -100,6 +83,17 @@ def reminder():
                             logging.info(f"✅ Reminder for {parent_reminder} successfully sent to {phone_number}")
                         else:
                             logging.error(f"❌ Failed to send {parent_reminder} reminder. Response Code: {response_code}")
+                    else:
+                        text = f"Tesing Reminder: Today is last date ❌  Kindly submit {current_month}'s {', '.join(pending_tasks)}."
+                        logging.info(f"Sending reminder to {phone_number}: {text}")
+                        message_data = get_text_message_input(phone_number, text)
+                        response_code = send_message(message_data)
+
+                        if response_code == 200:
+                            logging.info(f"✅ Reminder for {parent_reminder} successfully sent to {phone_number}")
+                        else:
+                            logging.error(f"❌ Failed to send {parent_reminder} reminder. Response Code: {response_code}")
+
 
         except json.JSONDecodeError:
             logging.error(f"❌ Error decoding JSON for client {client_id}: {sub_reminders}")
@@ -154,13 +148,13 @@ logging.info(f"Scheduler initialized with ID: {scheduler_id}")
 #         scheduler.add_job(cleanup_inactive_sessions, 'interval', minutes=15, id="cleanup_job")
 #         logging.info("Cleanup job added to scheduler")
 
-if not scheduler.get_job("reminder_job"):
-    scheduler.add_job(reminder, 'cron', day=21, hour=17, minute=33, timezone="Asia/Kolkata", id="reminder_job")
+# if not scheduler.get_job("reminder_job"):
+#     scheduler.add_job(reminder, 'cron', day=21, hour=17, minute=33, timezone="Asia/Kolkata", id="reminder_job")
     # scheduler.add_job(reminder, 'interval', minutes=1, timezone="Asia/Kolkata")
 
-    logging.info("Reminder job added to scheduler")
+    # logging.info("Reminder job added to scheduler")
 
-scheduler.add_job(reminder, 'cron', day=24, hour=11, minute=25, timezone="Asia/Kolkata", id="regular_reminder_job")
+scheduler.add_job(reminder, 'cron', day=24, hour=18, minute=51, timezone="Asia/Kolkata", id="regular_reminder_job")
 scheduler.add_job(reminder, 'cron', day=10, hour=9, minute=26, timezone="Asia/Kolkata", id="day_before_reminder_job")
 scheduler.add_job(reminder, 'cron', day=11, hour=9, minute=27, timezone="Asia/Kolkata", id="last_day_reminder_job")
 

@@ -8,6 +8,7 @@ from typing import Optional
 import json
 from app.utils.reminders import scheduler 
 
+
 # Initialize FastAPI app
 app = FastAPI(title="WhatsApp Bot API")
 

@@ -314,3 +314,41 @@ def close_db_connection():
 
 import atexit
 atexit.register(close_db_connection)
+
+def get_clients_reminders():
+    """Fetch clients with their phone numbers, sub_reminders, and parent_reminder."""
+    
+    query = """
+        SELECT c.client_id, c.phone_number, rs.sub_reminders, rs.parent_reminder
+        FROM clients c
+        JOIN recurring_service rs ON c.client_id = rs.client_id;
+    """
+    
+    try:
+        with db_conn.cursor() as cursor:
+            cursor.execute(query)
+            results = cursor.fetchall()
+            return results  # Returns a list of tuples (client_id, phone_number, sub_reminders, parent_reminder)
+    
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+        return []
+
+# def get_clients_reminders():
+#     """Fetch all client reminders from the database."""
+#     try:
+#         cursor = db_conn.cursor()
+#         cursor.execute("""
+#             SELECT c.phone_number, c.name, r.reminder_date, r.reminder_message
+#             FROM clients c
+#             JOIN reminders r ON c.id = r.client_id
+#             WHERE r.reminder_date >= CURRENT_DATE
+#             ORDER BY r.reminder_date
+#         """)
+#         reminders = cursor.fetchall()
+#         cursor.close()
+        
+#         return reminders
+#     except Exception as e:
+#         logging.error(f"Error fetching reminders: {str(e)}")
+#         return []
