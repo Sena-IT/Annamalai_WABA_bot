@@ -54,13 +54,14 @@ def reminder():
         logging.info(f"Processing client {client_id}, phone: {phone_number}, parent_reminder: {parent_reminder}")
         try:
             current_month = datetime.now().strftime("%B")
+            current_date =  datetime.now().day
             if isinstance(sub_reminders, list) and sub_reminders:
                 reminders_dict = sub_reminders[0]
                 pending_tasks = [task for task, status in reminders_dict.items() if not status]
                 logging.info(f"Pending tasks for {phone_number}: {pending_tasks}")
 
-                if parent_reminder == "normal_gst_filers" and pending_tasks:
-                    if datetime.now().day  == 10 : # Get today's date (1-31)
+                if parent_reminder == "monthly" and pending_tasks:
+                    if current_date  == 10 : # Get today's date (1-31)
 
                         text = f"Reminder: Tomorrow last date ‼️ Kindly submit {current_month}'s {', '.join(pending_tasks)}."
 
@@ -73,7 +74,7 @@ def reminder():
                         else:
                             logging.error(f"❌ Failed to send {parent_reminder} reminder. Response Code: {response_code}")
 
-                    if datetime.now().day  == 11:
+                    elif current_date  == 11:
                         text = f"Reminder: Today is last date ❌  Kindly submit {current_month}'s {', '.join(pending_tasks)}."
                         logging.info(f"Sending reminder to {phone_number}: {text}")
                         message_data = get_text_message_input(phone_number, text)
@@ -83,8 +84,33 @@ def reminder():
                             logging.info(f"✅ Reminder for {parent_reminder} successfully sent to {phone_number}")
                         else:
                             logging.error(f"❌ Failed to send {parent_reminder} reminder. Response Code: {response_code}")
+                    
+                    #15th – 20th: GST Tax Payment Reminder 
+                    elif current_date in ['15','16','17','18','19']:
+                        text = f"Reminder: GST Tax Payment is due on {current_date} of {current_month}"
+                        logging.info(f"Sending GST Tax Payment reminder to {phone_number}: {text}")
+                        message_data = get_text_message_input(phone_number, text)
+                        response_code = send_message(message_data)
+
+                        if response_code == 200:
+                            logging.info(f"✅ Reminder for GST Tax Payment successfully sent to {phone_number}")
+                        else:
+                            logging.error(f"❌ Failed to send GST Tax Payment reminder. Response Code: {response_code}")
+
+                    elif current_date == 20:
+                        text = f"URGENT❌: Today is the last day to pay GST tax for {current_month}"
+                        logging.info(f"Sending reminder to {phone_number}: {text}")
+                        message_data = get_text_message_input(phone_number, text)
+                        response_code = send_message(message_data)
+
+                        if response_code == 200:
+                            logging.info(f"✅ Reminder for GST Tax Payment successfully sent to {phone_number}")
+                        else:
+                            logging.error(f"❌ Failed to send GST Tax Payment reminder. Response Code: {response_code}")
+
+
                     else:
-                        text = f"Tesing Reminder: Today is last date ❌  Kindly submit {current_month}'s {', '.join(pending_tasks)}."
+                        text = f"Tesing Reminder: Kindly submit your pending documents {current_month}'s {', '.join(pending_tasks)}."
                         logging.info(f"Sending reminder to {phone_number}: {text}")
                         message_data = get_text_message_input(phone_number, text)
                         response_code = send_message(message_data)
@@ -155,8 +181,9 @@ logging.info(f"Scheduler initialized with ID: {scheduler_id}")
     # logging.info("Reminder job added to scheduler")
 
 scheduler.add_job(reminder, 'cron', day=24, hour=18, minute=51, timezone="Asia/Kolkata", id="regular_reminder_job")
-scheduler.add_job(reminder, 'cron', day=10, hour=9, minute=26, timezone="Asia/Kolkata", id="day_before_reminder_job")
-scheduler.add_job(reminder, 'cron', day=11, hour=9, minute=27, timezone="Asia/Kolkata", id="last_day_reminder_job")
+
+scheduler.add_job(reminder, 'cron', day=10, hour=10, minute=0, timezone="Asia/Kolkata", id="reminder_10")
+scheduler.add_job(reminder, 'cron', day=11, hour=10, minute=0, timezone="Asia/Kolkata", id="reminder_11")
 
 
 

@@ -388,11 +388,11 @@ def generate_response(body):
         ### Rules:
         1. Keep validation fields (e.g., email_validated) false by default—do not change them.
         2. Keep responses concise.
-        3. Don’t explain format unless asked.
-        4. Don’t repeat questions after details are provided.
+        3. Don't explain format unless asked.
+        4. Don't repeat questions after details are provided.
         5. If a detail is incorrect, ask to correct it without showing the pattern.
-        6. Don’t repeat service list after initial message.
-        7. Stick to facts—don’t assume or invent.
+        6. Don't repeat service list after initial message.
+        7. Stick to facts—don't assume or invent.
         8. Stop asking questions once all details are collected.
         9. Update session data only with relevant key-value responses from the user.
         10. Use bullets or clear structure in responses where needed.
@@ -473,11 +473,11 @@ def generate_response(body):
         ### Rules:
         1. Keep validation fields (e.g., email_validated) false by default—do not change them.
         2. Keep responses concise.
-        3. Don’t explain format unless asked.
-        4. Don’t repeat questions after details are provided.
+        3. Don't explain format unless asked.
+        4. Don't repeat questions after details are provided.
         5. If a detail is incorrect, ask to correct it without showing the pattern.
-        6. Don’t repeat service list after initial message.
-        7. Stick to facts—don’t assume or invent.
+        6. Don't repeat service list after initial message.
+        7. Stick to facts—don't assume or invent.
         8. Stop asking questions once all details are collected.
         9. Update session data only with relevant key-value responses from the user.
         10. Use bullets or clear structure in responses where needed.
@@ -561,11 +561,11 @@ def generate_response(body):
         ### Rules:
         1. Keep validation fields (e.g., email_validated) false by default—do not change them.
         2. Keep responses concise.
-        3. Don’t explain format unless asked.
-        4. Don’t repeat questions after details are provided.
+        3. Don't explain format unless asked.
+        4. Don't repeat questions after details are provided.
         5. If a detail is incorrect, ask to correct it without showing the pattern.
-        6. Don’t repeat service list after initial message.
-        7. Stick to facts—don’t assume or invent.
+        6. Don't repeat service list after initial message.
+        7. Stick to facts—don't assume or invent.
         8. Stop asking questions once all details are collected.
         9. Update session data only with relevant key-value responses from the user.
         10. Use bullets or clear structure in responses where needed.
@@ -602,7 +602,6 @@ def generate_response(body):
                3. Drafting
                4. Registration
                5. Loans
-               6. Other_Services
              - Ask which service they are interested in.
            - If new client (name not in session data):
              - In one message:
@@ -640,16 +639,17 @@ def generate_response(body):
            - Do not proceed with the service request (e.g., sending documents) until confirmation is received.
 
         5. **Confirmation:**
-           - Do not modify {sessions[phone_number]['data']["service_confirmation"]} until explicit user confirmation.
-           - If user responds with "Yes," "yep," or "Correct":
+           - Do not modify {sessions[phone_number]['data']["service_confirmation"]} until explicit user confirmation for above summary.
+           - If the user confirms , do not send summary again and 
              - Set {sessions[phone_number]['llm_response']} to "confirmed".
-             - Must Update {sessions[phone_number]['data']["service"]} with exact Parent service name from ['Income_Tax', 'GST', 'Drafting', 'Registration', 'Loans', 'Other_Services'].
-             - Update {sessions[phone_number]['data']["sub_service"]} with user asked service related query.
+             - Update {sessions[phone_number]['data']["service"]} with exact Parent service name from ['Income_Tax', 'GST', 'Drafting', 'Registration', 'Loans', 'Other_Services'].
+             - Update {sessions[phone_number]['data']["sub_service"]} with the exact service user requested.
              - Set {sessions[phone_number]['data']["service_confirmation"]} to true.
            - If no such response is received, ensure {sessions[phone_number]['data']["service_confirmation"]} remains false.
 
         6. **Post-Confirmation:**
-           - Set {sessions[phone_number]['llm_response']} to "confirmed" alone.
+           - Ask: "How can I assist you with this service?"
+           - Only after this step, if the user provides further details or documents (e.g., GST returns), process the request and send the appropriate response (e.g., SRN and document).
 
         7. **Closure:**
            - If user says "thank you," reply: "You're welcome! Let me know if you need further help."
@@ -657,11 +657,11 @@ def generate_response(body):
         ### Rules:
         1. Keep validation fields (e.g., email_validated) false by default—do not change them.
         2. Keep responses concise.
-        3. Don’t explain format unless asked.
-        4. Don’t repeat questions after details are provided.
+        3. Don't explain format unless asked.
+        4. Don't repeat questions after details are provided.
         5. If a detail is incorrect, ask to correct it without showing the pattern.
-        6. Don’t repeat service list after initial message.
-        7. Stick to facts—don’t assume or invent.
+        6. Don't repeat service list after initial message.
+        7. Stick to facts—don't assume or invent.
         8. Stop asking questions once all details are collected.
         9. Update session data only with relevant key-value responses from the user.
         10. Use bullets or clear structure in responses where needed.
@@ -780,10 +780,10 @@ def generate_response(body):
         ### Rules:
         1. Keep validation fields (e.g., email_validated) false by default—do not change them.
         2. Keep responses concise.
-        3. Don’t explain format unless asked.
-        4. Don’t repeat questions after details are provided.
-        5. Don’t repeat service list after initial message.
-        6. Stick to facts—don’t assume or invent.
+        3. Don't explain format unless asked.
+        4. Don't repeat questions after details are provided.
+        5. Don't repeat service list after initial message.
+        6. Stick to facts—don't assume or invent.
         7. Stop asking questions once all details are collected.
         8. Update session data only with relevant key-value responses from the user.
         9. Use bullets or clear structure in responses where needed.
@@ -862,6 +862,7 @@ def delete_uploaded_file(media_id,uploaded_time):
 
 
 def send_message(data):
+    print("send_message function called")
     headers = {
         "Content-type": "application/json",
         "Authorization": f"Bearer {settings.ACCESS_TOKEN}",
@@ -870,32 +871,42 @@ def send_message(data):
     url = f"https://graph.facebook.com/{settings.VERSION}/{settings.PHONE_NUMBER_ID}/messages"
 
     try:
-        logging.info("------------------- sending response ---------- %s",data)
+        logging.info("------------------- sending response ---------- %s", data)
         response = requests.post(
             url, data=data, headers=headers, timeout=10
-        )  # 10 seconds timeout as an example
-        response.raise_for_status() 
-
-        return response.status_code
+        )
         
+        # Parse response body
+        response_data = response.json()
+        
+        # Check for WhatsApp API specific errors
+        if 'error' in response_data:
+            error = response_data['error']
+            logging.error(f"WhatsApp API Error: {error.get('message', 'Unknown error')}")
+            logging.error(f"Error Code: {error.get('code')}")
+            logging.error(f"Error Details: {error.get('details', 'No details')}")
+            return error.get('code', 500)
+            
+        # Check for successful response
+        if response.status_code == 200 and 'messages' in response_data:
+            logging.info(f"Message sent successfully. Message ID: {response_data['messages'][0]['id']}")
+            return 200
+        else:
+            logging.error(f"Unexpected response: {response_data}")
+            return 500
+            
     except requests.Timeout:
         logging.error("Timeout occurred while sending message")
-        return JSONResponse(
-            content={"status": "error", "message": "Request timed out"},
-            status_code=408
-        )
+        return 408
     except requests.RequestException as e:
         logging.error(f"Request failed due to: {e}")
-        return JSONResponse(
-            content={"status": "error", "message": "Failed to send message"},
-            status_code=500
-        )
-    else:
-        log_http_response(response)
-        return JSONResponse(
-            content={"status": "success", "message": "Message sent successfully"},
-            status_code=response.status_code
-        )
+        return 500
+    except json.JSONDecodeError:
+        logging.error("Failed to parse response JSON")
+        return 500
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        return 500
 
 
 def process_text_for_whatsapp(text):
@@ -1151,7 +1162,7 @@ def process_whatsapp_message(body):
             # send_audio_response(wa_id, response)
             
     except Exception as e:
-        logging.error(f"Error processing message: {str(e)}")
+        logging.error(f"     processing message: {str(e)}")
         fallback_message = "Sorry, I encountered an error processing your request."
         data = get_text_message_input(wa_id, fallback_message)
         send_message(data)

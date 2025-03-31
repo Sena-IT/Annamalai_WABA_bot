@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GST Reminder System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input, button {
+            padding: 8px;
+            width: 100%;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        input[type="date"], input[type="time"] {
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #pendingItemsGroup {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+            margin-left: 10px;
+        }
+        .checkbox-group label {
+            margin: 0;
+            font-weight: normal;
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>GST Reminder Trigger Setup</h2>
+        
+        <div class="form-group">
+            <label for="reminderName">Reminder Name:</label>
+            <input type="text" id="reminderName" name="reminderName" placeholder="Enter Reminder Name">
+        </div>
+
+        <div class="form-group">
+            <label for="reminderDate">Reminder Date:</label>
+            <input type="date" id="reminderDate" name="reminderDate">
+        </div>
+
+        <div class="form-group">
+            <label for="reminderTime">Reminder Time:</label>
+            <input type="time" id="reminderTime" name="reminderTime">
+        </div>
+
+        <div class="form-group">
+            <label for="period">Period:</label>
+            <select id="period">
+                <option value="">Select Period</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Halfyearly">Half Yearly</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="client">Client Name:</label>
+            <input type="text" id="client" placeholder="Enter client name">
+        </div>
+
+        <div class="form-group">
+            <label for="msg">Reminder Message:</label>
+            <input type="text" id="msg" placeholder="Enter your Reminder Message">
+        </div>
+
+        <div class="form-group" id="pendingItemsGroup">
+            <label>Items to Send for Reminders:</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="salesInvoice" value="Sales Invoice">
+                <label for="salesInvoice">Sales Invoice</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="purchaseInvoice" value="Purchase Invoice">
+                <label for="purchaseInvoice">Purchase Invoice</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="bankStatement" value="Bank Statement">
+                <label for="bankStatement">Bank Statement</label>
+            </div>
+        </div>
+
+        <button onclick="createReminder()">Create Reminder Trigger</button>
+        
+        <div id="status"></div>
+    </div>
+
+    <script>
+        async function createReminder() {
+            const reminderName = document.getElementById('reminderName').value;
+            const reminderDate = document.getElementById('reminderDate').value;
+            const reminderTime = document.getElementById('reminderTime').value;
+            const period = document.getElementById('period').value;
+            const client = document.getElementById('client').value;
+            const msg = document.getElementById('msg').value;
+
+            // Collect selected documents
+            const pendingItems = [];
+            if (document.getElementById('salesInvoice').checked) pendingItems.push('Sales Invoice');
+            if (document.getElementById('purchaseInvoice').checked) pendingItems.push('Purchase Invoice');
+            if (document.getElementById('bankStatement').checked) pendingItems.push('Bank Statement');
+
+            // Validation
+            if (!reminderName || !reminderDate || !reminderTime || !client || !msg) {
+                document.getElementById('status').innerHTML = 
+                    `<div style="background: #f2dede; color: #a94442;">Error: Please fill in all required fields (Reminder Name, Date, Time, Client Name, and Message)</div>`;
+                return;
+            }
+
+            // Display confirmation message
+            const confirmationMessage = `
+                Reminder Name: ${reminderName}<br>
+                Scheduled Date: ${reminderDate}<br>
+                Scheduled Time: ${reminderTime}<br>
+                Documents: ${pendingItems.length > 0 ? pendingItems.join(', ') : 'None'}
+            `;
+            document.getElementById('status').innerHTML = 
+                `<div style="background: #d9edf7; color: #31708f;">Confirmation:<br>${confirmationMessage}</div>`;
+
+            // Prepare data to send to backend
+            const data = {
+                reminderName,
+                reminderDate,
+                reminderTime,
+                client,
+                message: msg,
+                pendingItems
+            };
+
+            // Send data to backend
+            try {
+                const response = await fetch('http://localhost:8000/create_reminder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                document.getElementById('status').innerHTML += 
+                    `<div style="background: #dff0d8; color: #3c763d; margin-top: 10px;">${result.message}</div>`;
+            } catch (error) {
+                document.getElementById('status').innerHTML += 
+                    `<div style="background: #f2dede; color: #a94442; margin-top: 10px;">Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
