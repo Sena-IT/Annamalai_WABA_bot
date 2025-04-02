@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Submission Forms</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        .form-container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        .checkbox-group {
+            margin-bottom: 15px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Form 1: GSTR-1 Monthly Document -->
+    <div class="form-container">
+        <h2>GSTR-1 Monthly Document</h2>
+        <form action="/submit-gstr1" method="POST">
+            <label for="client-name-gstr1">Client Name:</label>
+            <input type="text" id="client-name-gstr1" name="client-name" required>
+
+            <label for="gstin-gstr1">GSTIN:</label>
+            <input type="text" id="gstin-gstr1" name="gstin" required>
+
+            <label for="month-gstr1">Month:</label>
+            <input type="text" id="month-gstr1" name="month" required>
+
+            <label for="year-gstr1">Year:</label>
+            <input type="text" id="year-gstr1" name="year" required>
+
+            <label>Document Submission:</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="gstr1-sales" name="doc-submission" value="GSTR1 Sales">
+                <label for="gstr1-sales" style="display: inline;">GSTR1 Sales</label><br>
+                <input type="checkbox" id="gstr1-purchases" name="doc-submission" value="GSTR1 Purchases">
+                <label for="gstr1-purchases" style="display: inline;">GSTR1 Purchases</label><br>
+                <input type="checkbox" id="gstr1-bs" name="doc-submission" value="GSTR1 BS">
+                <label for="gstr1-bs" style="display: inline;">GSTR1 BS</label>
+            </div>
+
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+
+    <!-- Form 2: Monthly Tax Payment Document -->
+    <div class="form-container">
+        <h2>Monthly Tax Payment Document</h2>
+        <form action="/submit-tax-payment" method="POST">
+            <label for="e-name-tax">Employee Name:</label>
+            <input type="text" id="e-name-tax" name="e-name" required>
+
+            <label for="gstin-tax">GSTIN:</label>
+            <input type="text" id="gstin-tax" name="gstin" required>
+
+            <label>Tax Work Completed:</label>
+            <div class="checkbox-group">
+                <input type="checkbox" id="tax-yes" name="tax-completed" value="Yes">
+                <label for="tax-yes" style="display: inline;">Yes</label>
+                <input type="checkbox" id="tax-no" name="tax-completed" value="No">
+                <label for="tax-no" style="display: inline;">No</label>
+            </div>
+
+            <label for="cgst">CGST:</label>
+            <input type="text" id="cgst" name="cgst" required>
+
+            <label for="sgst">SGST:</label>
+            <input type="text" id="sgst" name="sgst" required>
+
+            <label for="igst">IGST:</label>
+            <input type="text" id="igst" name="igst" required>
+
+            <label for="total">Total:</label>
+            <input type="text" id="total" name="total" required>
+
+            <button type="submit">Submit</button>
+        </form>
+    </div>
+
+</body>
+</html>

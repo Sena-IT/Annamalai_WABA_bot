@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -181,7 +181,7 @@
 
             // Send data to backend
             try {
-                const response = await fetch('http://localhost:8000/create_reminder', {
+                const response = await fetch('http://localhost:8001/create_reminder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -196,4 +196,255 @@
         }
     </script>
 </body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GST Reminder System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input, button {
+            padding: 8px;
+            width: 100%;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        input[type="date"], input[type="time"] {
+            padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<script>
+    function handlePeriodChange() {
+            const period = document.getElementById('period').value;
+            document.getElementById('monthlyOptions').classList.add('hidden');
+            document.getElementById('quarterlyHalfYearlyOptions').classList.add('hidden');
+
+            if (period === 'Monthly') {
+                document.getElementById('monthlyOptions').classList.remove('hidden');
+            } else if (period === 'Quarterly' || period === 'Halfyearly') {
+                document.getElementById('quarterlyHalfYearlyOptions').classList.remove('hidden');
+            }
+        }
+        
+    async function createReminder() {
+    const reminderName = document.getElementById('reminderName').value;
+    const reminderDate = document.getElementById('reminderDate').value;
+    const reminderTime = document.getElementById('reminderTime').value;
+    const period = document.getElementById('period').value;
+    const client = document.getElementById('client').value;
+    const gstin = document.getElementById('gstin').value;
+    const msg = document.getElementById('msg').value;
+
+// Collect selected documents
+const pendingItems = [];
+// if (document.querySelector('input[name="documents"][value="Invoice"]').checked) pendingItems.push('Invoice');
+// if (document.querySelector('input[name="documents"][value="Tax Forms"]').checked) pendingItems.push('Tax Forms');
+// if (document.querySelector('input[name="documents"][value="Financial Statements"]').checked) pendingItems.push('Financial Statements');
+document.querySelectorAll('input[name="documents"]:checked').forEach((checkbox) => {
+        pendingItems.push(checkbox.value);
+    });
+
+// Period specific data
+let periodData = {};
+if (period === 'Monthly') {
+    const fromDate = document.getElementById('fromDate').value;
+    const toDate = document.getElementById('toDate').value;
+    const triggerTime = document.getElementById('triggerTime').value;
+    periodData = { fromDate, toDate, triggerTime };
+} else if (period === 'Quarterly' || period === 'Halfyearly') {
+    const months = Array.from(document.getElementById('months').selectedOptions).map(option => option.value);
+    const reminderDate = document.getElementById('reminderDate').value;
+    const reminderTime = document.getElementById('reminderTime').value;
+    periodData = { months, reminderDate, reminderTime };
+}
+
+// Validation
+// if (!reminderName || !client || !msg || !period) {
+//     console.log(reminderName,reminderDate,reminderTime,client,msg,period)
+//     document.getElementById('status').innerHTML = 
+//         `<div style="background: #f2dede; color: #a94442;">Error: Please fill in all required fields (Reminder Name, Date, Time, Client Name, Message, and Period)</div>`;
+//     return;
+// }
+
+// Display confirmation message
+const confirmationMessage = `
+        Reminder Name: ${reminderName}<br>
+        Client Name: ${client}<br>
+        GSTIN: ${gstin}<br>
+        Period: ${period}<br>
+        Message: ${msg}<br>
+        Scheduled Date: ${reminderDate}<br>
+        Scheduled Time: ${reminderTime}<br>
+        Documents: ${pendingItems.length > 0 ? pendingItems.join(', ') : 'None'}<br>
+        ${period === 'Monthly' ? `From Date: ${periodData.fromDate}, To Date: ${periodData.toDate}, Trigger Time: ${periodData.triggerTime}` : ''}
+        ${period === 'Quarterly' || period === 'Halfyearly' ? `Months: ${periodData.months.join(', ')}, Reminder Date: ${periodData.reminderDate}, Reminder Time: ${periodData.reminderTime}` : ''}
+    `;
+
+document.getElementById('status').innerHTML = 
+    `<div style="background: #d9edf7; color: #31708f;">Confirmation:<br>${confirmationMessage}</div>`;
+
+// Prepare data to send to backend
+const data = {
+        reminderName,
+        reminderDate,
+        reminderTime,
+        client,
+        gstin,
+        message: msg,
+        pendingItems,
+        period,
+        periodData // contains the period-specific information
+    };
+
+// Send data to backend
+try {
+    const response = await fetch('http://localhost:8002/create_reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    const result = await response.json();
+    document.getElementById('status').innerHTML += 
+        `<div style="background: #dff0d8; color: #3c763d; margin-top: 10px;">${result.message}</div>`;
+} catch (error) {
+    document.getElementById('status').innerHTML += 
+        `<div style="background: #f2dede; color: #a94442; margin-top: 10px;">Error: ${error.message}</div>`;
+}
+}
+
+</script>
+<body>
+    <div class="container">
+        <h2>GST Reminder Trigger Setup</h2>
+        
+        <div class="form-group">
+            <label for="reminderName">Reminder Name:</label>
+            <input type="text" id="reminderName" name="reminderName" placeholder="Enter Reminder Name">
+        </div>
+
+        <div class="form-group">
+            <label for="period">Period:</label>
+            <select id="period" onchange="handlePeriodChange()">
+                <option value="">Select Period</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Halfyearly">Half Yearly</option>
+            </select>
+        </div>
+
+        <div id="monthlyOptions" class="hidden">
+            <div class="form-group">
+                <label for="fromDate">From Date:</label>
+                <input type="date" id="fromDate">
+            </div>
+            <div class="form-group">
+                <label for="toDate">To Date:</label>
+                <input type="date" id="toDate">
+            </div>
+            <div class="form-group">
+                <label for="triggerTime">Trigger Time:</label>
+                <input type="time" id="triggerTime">
+            </div>
+        </div>
+
+        <div id="quarterlyHalfYearlyOptions" class="hidden">
+            <div class="form-group">
+                <label for="months">Select Months:</label>
+                <select id="months" multiple>
+                    <option value="January">January</option>
+                    <option value="February">February</option>
+                    <option value="March">March</option>
+                    <option value="April">April</option>
+                    <option value="May">May</option>
+                    <option value="June">June</option>
+                    <option value="July">July</option>
+                    <option value="August">August</option>
+                    <option value="September">September</option>
+                    <option value="October">October</option>
+                    <option value="November">November</option>
+                    <option value="December">December</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reminderDate">Date:</label>
+                <input type="date" id="reminderDate">
+            </div>
+            <div class="form-group">
+                <label for="reminderTime">Time:</label>
+                <input type="time" id="reminderTime">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="msg">Reminder Message:</label>
+            <input type="text" id="msg" placeholder="Enter your Reminder Message">
+        </div>
+
+        <div class="form-group">
+            <label>Documents to Remind:</label>
+            <input type="checkbox" name="documents" value="Invoice"> Sales Invoice
+            <input type="checkbox" name="documents" value="Tax Forms"> Purchase Invoice
+            <input type="checkbox" name="documents" value="Bank Statements"> Bank Statements
+        </div>
+
+        <div class="form-group">
+            <label for="client">Client Name:</label>
+            <input type="text" id="client" placeholder="Enter client name">
+        </div>
+
+        <div class="form-group">
+            <label for="gstin">GSTIN:</label>
+            <input type="text" id="gstin" placeholder="Enter GSTIN">
+        </div>
+
+        <button onclick="createReminder()">Create Reminder Trigger</button>
+        
+        <div id="status"></div>
+    </div>
+
+</body>
 </html>
+

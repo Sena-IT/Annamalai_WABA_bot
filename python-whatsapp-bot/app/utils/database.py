@@ -1,15 +1,17 @@
 import os
-import psycopg2
+
 import logging
 from datetime import datetime
 from dotenv import load_dotenv, find_dotenv
 import json
+import psycopg2
 
 # Load Environment Variables
 dotenv_path = find_dotenv()
 load_dotenv(dotenv_path)
 
 # Database Connection
+import psycopg2
 db_conn = psycopg2.connect(
     host=os.getenv('DB_HOST'),
     port=os.getenv('DB_PORT'),
@@ -332,7 +334,41 @@ def get_clients_reminders():
     
     except psycopg2.Error as e:
         print(f"Database error: {e}")
+        return []    
+    
+
+def get_client_reminders_gstin(gstin):
+    """Fetch client reminders for a specific GSTIN."""
+
+    query = """
+        SELECT c.client_id, c.phone_number, rs.sub_reminders, rs.parent_reminder
+        FROM clients c
+        JOIN recurring_service rs ON c.client_id = rs.client_id
+        WHERE c.gstin = %s
+    """
+
+    try:
+        db_conn = psycopg2.connect(
+            host=os.getenv('DB_HOST'),
+            port=os.getenv('DB_PORT'),
+            database=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD')
+        )
+        with db_conn.cursor() as cursor:
+            cursor.execute(query, (gstin,))  # Pass parameters as a tuple
+            results = cursor.fetchall()
+            print(results)
+            return results  # Returns a list of tuples
+
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
         return []
+     
+    finally:
+        db_conn.close()
+
+    
 
 # def get_clients_reminders():
 #     """Fetch all client reminders from the database."""
