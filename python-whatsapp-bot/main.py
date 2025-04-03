@@ -64,6 +64,7 @@ async def verify_webhook(request: Request):
     
 processed_messages = set()
 @app.post("/webhook")
+
 async def webhook_handler(
     request: Request,
     verified: bool = Depends(signature_required)

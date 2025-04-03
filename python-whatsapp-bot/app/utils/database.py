@@ -23,6 +23,7 @@ db_conn = psycopg2.connect(
 # ===========================
 # ✅ Client Operations
 # ===========================
+
 def insert_client(data, phone_number):
     """
     Insert client data into the clients table.
@@ -368,7 +369,38 @@ def get_client_reminders_gstin(gstin):
     finally:
         db_conn.close()
 
+def get_client_reminder_details(gstin):
+    """Fetch client reminder details for a specific GSTIN."""
     
+    query = """
+        SELECT c.client_id, c.phone_number, ds.documents_submitted, ds.year , ds.month
+        FROM clients c
+        JOIN documents_submission ds ON c.client_id = ds.client_id
+        WHERE c.gstin = %s
+    """
+
+    try:
+        db_conn = psycopg2.connect(
+            host=os.getenv('DB_HOST'),
+            port=os.getenv('DB_PORT'),
+            database=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD')
+        )
+        with db_conn.cursor() as cursor:
+            cursor.execute(query, (gstin,))  # Pass parameters as a tuple
+            results = cursor.fetchall()
+            print(results)
+            return results  # Returns a list of tuples
+
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+        return []
+     
+    finally:
+        db_conn.close()
+
+
 
 # def get_clients_reminders():
 #     """Fetch all client reminders from the database."""
