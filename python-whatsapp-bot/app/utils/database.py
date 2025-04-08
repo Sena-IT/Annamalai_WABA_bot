@@ -133,6 +133,57 @@ def get_client_by_phone(phone_number):
             }
         return None
     
+
+def upload_document(documents):
+    """Uploads document submission details into the database with a single query."""
+    
+    query = """
+        INSERT INTO documents_submission(client_id, reminder_id, year, month, documents_submitted)
+        VALUES (
+            (SELECT client_id FROM masterClientTable WHERE gstin = %s),
+            %s, %s, %s, %s
+        )
+        RETURNING client_id;
+    """
+
+    try:
+        # Establish database connection
+        db_conn = psycopg2.connect(
+            host=os.getenv('DB_HOST'),
+            port=os.getenv('DB_PORT'),
+            database=os.getenv('DB_NAME'),
+            user=os.getenv('DB_USER'),
+            password=os.getenv('DB_PASSWORD')
+        )
+
+        with db_conn.cursor() as cursor:
+            # Execute the query
+            cursor.execute(query, (
+                documents.gstin,
+                1,
+                documents.year,
+                documents.month,
+                json.dumps(documents.documents)  # Convert list to JSON
+            ))
+
+            result = cursor.fetchone()
+            if not result:
+                print(f"Client with GSTIN {documents.gstin} not found.")
+                return {"status": 404, "message": f"Client with GSTIN {documents.gstin} not found."}
+
+        db_conn.commit()
+        print("Document uploaded successfully")
+        return {"status": 200, "message": "Documents inserted successfully"}
+
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+        return {"status": 500, "message": f"Database operation failed: {str(e)}"}
+
+    finally:
+        db_conn.close()
+    
+
+    
 # ===========================
 # ✅ SRN Operations
 # ===========================
@@ -374,7 +425,7 @@ def get_client_reminder_details(gstin):
     
     query = """
         SELECT c.client_id, c.phone_number, ds.documents_submitted, ds.year , ds.month
-        FROM clients c
+        FROM masterClientTable c
         JOIN documents_submission ds ON c.client_id = ds.client_id
         WHERE c.gstin = %s
     """
@@ -385,7 +436,7 @@ def get_client_reminder_details(gstin):
             port=os.getenv('DB_PORT'),
             database=os.getenv('DB_NAME'),
             user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD')
+            password=os.getenv('DB_PASSWORD')   
         )
         with db_conn.cursor() as cursor:
             cursor.execute(query, (gstin,))  # Pass parameters as a tuple
@@ -399,6 +450,72 @@ def get_client_reminder_details(gstin):
      
     finally:
         db_conn.close()
+
+def getAllDataFromSQL(gst: str):
+    # SQL query to fetch all data from the database
+
+    query = f"""SELECT c.name,c.trade_name,c.phone_number, ds.documents_submitted, ds.year , ds.month ,lf.fixed_rate,lf.late_fee
+        FROM masterClientTable c
+        JOIN documents_submission ds ON c.client_id = ds.client_id JOIN late_fee lf on c.client_id = lf.client_id
+        WHERE c.gstin = '{gst}'"""  
+
+    try:
+        # db_conn = psycopg2.connect(
+        #     host=os.getenv('DB_HOST'),
+        #     port=os.getenv('DB_PORT'),
+        #     database=os.getenv('DB_NAME'),
+        #     user=os.getenv('DB_USER'),
+        #     password=os.getenv('DB_PASSWORD')   
+        # )
+        with db_conn.cursor() as cursor:
+            cursor.execute(query)  # Pass parameters as a tuple
+            results = cursor.fetchall()
+            print(results)
+            return results  # Returns a list of tuples
+
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+        return []
+    
+
+def updateLateFeeDataToSQL(gst: str, lateFee: int):
+    # SQL query to fetch all data from the database
+
+    print("---------------->",gst,lateFee)
+
+    query = f"""
+        UPDATE late_fee lf
+            SET late_fee = {lateFee} ,
+            updated_date = now()
+            FROM masterClientTable c
+            WHERE lf.client_id = c.client_id
+            AND c.gstin = '{gst}'
+            AND lf.client_id = c.client_id;
+    """
+
+    try:
+        # db_conn = psycopg2.connect(
+        #     host=os.getenv('DB_HOST'),
+        #     port=os.getenv('DB_PORT'),
+        #     database=os.getenv('DB_NAME'),
+        #     user=os.getenv('DB_USER'),
+        #     password=os.getenv('DB_PASSWORD')   
+        # )
+        with db_conn.cursor() as cursor:
+            cursor.execute(query)  # Pass parameters as a tuple
+            db_conn.commit()
+            print("Updated")      
+            return []      
+
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+        return []
+    
+
+    
+     
+    # finally:
+    #     db_conn.close()            
 
 
 
