@@ -66,6 +66,42 @@ def get_text_message_input(recipient, text):
         }
     )
 
+def get_reminder_template_input(recipient, reminder_text):
+    return {
+        "messaging_product": "whatsapp",
+        "to": recipient,
+        "type": "template",
+        "template": {
+            "name": "reminder_template",  # Replace with your approved template name
+            "language": {
+                "code": "en_US"
+            },
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "text": reminder_text
+                        }
+                    ]
+                },
+                # {
+                #     "type": "button",
+                #     "sub_type": "url",
+                #     "index": "0",
+                #     "parameters": [
+                #         {
+                #             "type": "text",
+                #             "text": "https://trustedtaxconsultants.com/contact-us/"
+                #         }
+                #     ]
+                # }
+            ]
+        }
+    }
+
+
 
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -1149,6 +1185,7 @@ def process_whatsapp_message(body):
                     message=f"✅ SRN ({srn_id}) created successfully for your service "#,sessions[phone_number]['data']['sub_service']
                     data = get_text_message_input(wa_id,message)
                     send_message(data)
+                    send_audio_response(wa_id, response)
                     sessions[phone_number]['data']["service_confirmation"] = False
                     sessions[phone_number]['data']['service']=None
                     sessions[phone_number]['data']['sub_service']=None
@@ -1159,7 +1196,7 @@ def process_whatsapp_message(body):
                     # Send both text and audio response
             data = get_text_message_input(wa_id, response)
             send_message(data)
-            # send_audio_response(wa_id, response)
+            send_audio_response(wa_id, response)
             
     except Exception as e:
         logging.error(f"     processing message: {str(e)}")

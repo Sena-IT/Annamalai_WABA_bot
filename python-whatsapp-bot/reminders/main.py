@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import logging
 import uvicorn
 from typing import List, Optional
-from app.utils.whatsapp_utils import get_text_message_input, send_message 
+from app.utils.whatsapp_utils import get_text_message_input, send_message , get_reminder_template_input
 from app.utils.database import get_client_reminder_details , upload_document, getAllDataFromSQL, updateLateFeeDataToSQL
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import psycopg2
@@ -79,38 +79,45 @@ class DocumentData(BaseModel):
 
 
 
-def send_reminder(client: str, message: str, pending_items: List[str] = None,phone_number=None,gst_number=None):
+def send_reminder(gst_number=None, documents_needed: List[str] = None):
     print("inside send reminder")
 
-    dataResponse = getAllDataFromSQL(gst_number)        
+    dataResponse = getAllDataFromSQL(gst_number)     
 
-    llm_response = llm_message(dataResponse[0][0],dataResponse[0][1],dataResponse[0][2],dataResponse[0][3],dataResponse[0][4],dataResponse[0][5],dataResponse[0][6],dataResponse[0][7])
+    pending_tasks = [doc for doc in documents_needed if doc not in dataResponse[0][3]]   
 
-    late_fee_date = "2025-04-12"
+    llm_response = llm_message(dataResponse[0][0],dataResponse[0][1],dataResponse[0][2],dataResponse[0][3],dataResponse[0][4],dataResponse[0][5],dataResponse[0][6],dataResponse[0][7], documents_needed)
 
-    # Current date
-    current_date = datetime.now()
 
-    # Convert given date to datetime object
-    given_date_obj = datetime.strptime(late_fee_date, "%Y-%m-%d")
 
-    # Calculate the difference
-    day_diff = given_date_obj - current_date
+    # late_fee_date = "2025-04-12"
 
-    lateFee = dataResponse[0][7]  + (dataResponse[0][6] * day_diff)
+    today = datetime.now()
+    late_fee_date = datetime(today.year, today.month, 12)
 
-    updateLateFeeDataToSQL(gst_number,lateFee)
+    # Only calculate late fee if current date is after the 12th
+    if today > late_fee_date:
+        # Calculate the difference in days
+        day_diff = (today - late_fee_date).days  # returns int
+        lateFee = dataResponse[0][7] + (dataResponse[0][6] * day_diff)
+        updateLateFeeDataToSQL(gst_number, lateFee)
+    else:
+        print("No late fee. Current date is before or on the 12th.")
 
-    if pending_items:
+
+    if pending_tasks:
         recipient = 919943531228
         message_data = get_text_message_input(recipient, llm_response)
+        # message_data = get_reminder_template_input(recipient, llm_response)
         response = send_message(message_data)
+        
         if response == 200:
             logger.info("Reminder sent successfully")
         else:
             logger.error("Reminder failed")
-    else:
-        logger.info(f"Sending reminder to {client}: {message}")
+    
+
+
 
 
 MONTH_MAP = {
@@ -128,12 +135,12 @@ load_dotenv(dotenv_path)
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 
-def llm_message(name, trade_name, phone_number, documents_submitted, year, month,fee, lateFee):
+def llm_message(name, trade_name, phone_number, documents_submitted, year, month,fee, lateFee, documents_needed):
     prompt = f"""You are a reminder assistant.
     Based on the incoming reminder message given by the user and pending task list.
     Make your response short and crisp for whatsapp message.
 
-    Total Document needed: ["sales_invoice", "purchase_invoice","bank_statement"]    
+    Total Document needed:  {documents_needed}  
 
     you must calculate the late fee according to the below details and return in the result:
     Fee per day : {fee} Rs. - you must calculate with the current date > 12th of a month \n current Date: {datetime.now()}
@@ -144,7 +151,7 @@ def llm_message(name, trade_name, phone_number, documents_submitted, year, month
     
     Pending tasks: Refer "Total Document needed" and {documents_submitted}, if there is any mismatch, please send a reminder to the client.
     
-    Reminder message: 
+    Reminder message inputs: 
 
     Name: {name}
     Trade Name: {trade_name} - their company name
@@ -153,7 +160,12 @@ def llm_message(name, trade_name, phone_number, documents_submitted, year, month
     Year: {year}
     Month: {month}
     
-    Generate a structured reminder message to be sent to the client."""
+    Generate a structured reminder message to be sent to the client.
+    Example reminder message :
+    Dear Promoter of M/s (1) and his company name , Please submit the Sales , Purchase Invoices and Bank Statements for the Month of current month's previous month (2) before 12th of (2) current month
+
+    
+    """
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -168,86 +180,78 @@ def llm_message(name, trade_name, phone_number, documents_submitted, year, month
 
 
 def schedule_reminder(reminder):
-    job_id_prefix = f"reminder_{reminder.reminderName}_{reminder.client}"
 
-    clinet_reminders = getAllDataFromSQL(reminder.gstin)
-    for name, tradeName, phoneNumber, doc , year, month , fee, late_fee in clinet_reminders:
-        pending_tasks = [doc for doc in reminder.pendingItems if doc not in doc]
-        logging.info(f"Pending tasks for {phoneNumber}: {pending_tasks}")
+
+    if reminder.period == "Monthly":
+        # start_date = datetime.strptime(reminder.periodData.fromDate, "%Y-%m-%d")
+        # end_date = datetime.strptime(reminder.periodData.toDate, "%Y-%m-%d")
+        start_day = int(reminder.periodData.fromDay)
+        end_day = int(reminder.periodData.toDay)
+
+        print(start_day,type(start_day))
+        print(end_day,type(end_day))
+
         
-        if reminder.period == "Monthly":
-            # start_date = datetime.strptime(reminder.periodData.fromDate, "%Y-%m-%d")
-            # end_date = datetime.strptime(reminder.periodData.toDate, "%Y-%m-%d")
-            start_day = int(reminder.periodData.fromDay)
-            end_day = int(reminder.periodData.toDay)
+        current_day = start_day
+        print(current_day,type(current_day))
+        
+        for day in range(start_day, end_day + 1):
 
-            print(start_day,type(start_day))
-            print(end_day,type(end_day))
- 
+            job_id = f"-{reminder.period}_reminder_{reminder.reminderName}_{day}"
+
+            job_id_created=scheduler.add_job(
+                send_reminder,
+                CronTrigger(day=day, hour=int(reminder.periodData.triggerTime.split(':')[0]), minute=int(reminder.periodData.triggerTime.split(':')[1])),
+                args=[reminder.gstin,reminder.pendingItems],
+                # kwargs={"reminder_name": reminder.reminderName},  # Store reminder name
+                id=job_id,
+                replace_existing=True
+            )
+            logging.info(f"job created id {job_id_created}")
+
+            logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {current_day} at {reminder.periodData.triggerTime}")
+        
+        print("-------------------------- listing jobs -----------------")
+        list_scheduled_jobs()
+
+    elif reminder.period == "Quarterly" or reminder.period == "Halfyearly":
+        
+
+        months=reminder.periodData.months
+
+        for month in months:
             
+            print(f"month:{month} , month_map:{MONTH_MAP[month]}")
+            start_day = int(reminder.periodData.reminderFromDate)
+            end_day = int(reminder.periodData.reminderToDate)
             current_day = start_day
-            print(current_day,type(current_day))
-            # while current_date <= end_day:
             
             for day in range(start_day, end_day + 1):
 
-                job_id = f"{job_id_prefix}_{current_day}"
-
-                message = f"{reminder.message} : * {', '.join(pending_tasks)}*."
-
+                
+                job_id = f"{reminder.period}_reminder_{reminder.reminderName}__{month}_{day}"
+                print("job id",job_id)
+                    
                 job_id_created=scheduler.add_job(
                     send_reminder,
-                    CronTrigger(day=current_day, hour=int(reminder.periodData.triggerTime.split(':')[0]), minute=int(reminder.periodData.triggerTime.split(':')[1])),
-                    args=[reminder.client, message, reminder.pendingItems,phoneNumber,reminder.gstin],
-                    # kwargs={"reminder_name": reminder.reminderName},  # Store reminder name
+                    CronTrigger(month=MONTH_MAP[month], day=day,
+                                hour=int(reminder.periodData.reminderTime.split(':')[0]), minute=int(reminder.periodData.reminderTime.split(':')[1])),
+                    args=[reminder.gstin,reminder.pendingItems],
                     id=job_id,
                     replace_existing=True
+
                 )
-                logging.info(f"job created id {job_id_created}")
+                print("job_id_created",job_id_created)
+                if job_id_created:
+                    logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} for month {month}")
+                else:
+                    logger.info(f"Failed to schedule {reminder.period} reminder '{reminder.reminderName}'")
 
-                logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {current_day} at {reminder.periodData.triggerTime}")
-            
-            print("-------------------------- listing jobs -----------------")
-            list_scheduled_jobs()
-
-        elif reminder.period == "Quarterly" or reminder.period == "Halfyearly":
-            
-
-            months=reminder.periodData.months
-
-            for month in months:
-                
-                print(f"month:{month} , month_map:{MONTH_MAP[month]}")
-                start_day = int(reminder.periodData.reminderFromDate)
-                end_day = int(reminder.periodData.reminderToDate)
-                current_day = start_day
-                
-                for day in range(start_day, end_day + 1):
-
-                    
-                    job_id = f"{reminder.period} {job_id_prefix}_{month}_{day}"
-                    print("job id",job_id)
-                        
-                    job_id_created=scheduler.add_job(
-                        send_reminder,
-                        CronTrigger(month=MONTH_MAP[month], day=day,
-                                    hour=int(reminder.periodData.reminderTime.split(':')[0]), minute=int(reminder.periodData.reminderTime.split(':')[1])),
-                        args=[reminder.client, reminder.message, reminder.pendingItems,phoneNumber],
-                        id=job_id,
-                        replace_existing=True
-
-                    )
-                    print("job_id_created",job_id_created)
-                    if job_id_created:
-                        logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} for month {month}")
-                    else:
-                        logger.info(f"Failed to schedule {reminder.period} reminder '{reminder.reminderName}'")
-
-            print("-------------------------- listing jobs ---------------------------")
-            list_scheduled_jobs()
-        else:
-            raise HTTPException(status_code=400, detail="Invalid period type")
-        
+        print("-------------------------- listing jobs ---------------------------")
+        list_scheduled_jobs()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid period type")
+    
 #----------------------------------------------------------------------------------------------------------------------------------
 
     # for client_id, phone_number, documents, year , month in clinet_reminders:
