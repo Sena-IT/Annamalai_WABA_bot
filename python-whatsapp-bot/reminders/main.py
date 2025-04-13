@@ -1,5 +1,3 @@
-
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -13,7 +11,23 @@ from app.utils.whatsapp_utils import get_text_message_input, send_message , get_
 from app.utils.database import get_client_reminder_details , upload_document, getAllDataFromSQL, updateLateFeeDataToSQL
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import psycopg2
+import ast
 
+# Month mapping dictionary
+MONTH_MAP = {
+    'January': 1,
+    'February': 2,
+    'March': 3,
+    'April': 4,
+    'May': 5,
+    'June': 6,
+    'July': 7,
+    'August': 8,
+    'September': 9,
+    'October': 10,
+    'November': 11,
+    'December': 12
+}
 
 app = FastAPI()
 
@@ -47,12 +61,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class PeriodData(BaseModel):
-     # Common for all periods, depending on your needs
-    fromDay: Optional[str] = None  # Day (1-31)
-    toDay: Optional[str] = None    # Day (1-31)
-    triggerTime: Optional[str] = None  # For monthly reminders
-    
-    # For quarterly and halfyearly periods
+    fromDay: Optional[str] = None
+    toDay: Optional[str] = None
+    triggerTime: Optional[str] = None
     months: Optional[List[str]] = None
     reminderFromDate: Optional[str] = None
     reminderToDate: Optional[str] = None
@@ -61,14 +72,38 @@ class PeriodData(BaseModel):
 class ReminderData(BaseModel):
     reminderName: str
     reminderFromDate: str
-    reminderToDate :str
+    reminderToDate: str
     reminderTime: str
-    client: str
-    gstin : str
+    client: Optional[str] = None  # Made optional
+    gstin: Optional[str] = None   # Made optional
     message: str
     pendingItems: List[str]
     period: str
-    periodData: PeriodData        # Period-specific details as defined above
+    periodData: PeriodData
+
+# class PeriodData(BaseModel):
+#      # Common for all periods, depending on your needs
+#     fromDay: Optional[str] = None  # Day (1-31)
+#     toDay: Optional[str] = None    # Day (1-31)
+#     triggerTime: Optional[str] = None  # For monthly reminders
+    
+#     # For quarterly and halfyearly periods
+#     months: Optional[List[str]] = None
+#     reminderFromDate: Optional[str] = None
+#     reminderToDate: Optional[str] = None
+#     reminderTime: Optional[str] = None
+
+# class ReminderData(BaseModel):
+#     reminderName: str
+#     reminderFromDate: str
+#     reminderToDate :str
+#     reminderTime: str
+#     client: str
+#     gstin : str
+#     message: str
+#     pendingItems: List[str]
+#     period: str
+#     periodData: PeriodData        # Period-specific details as defined above
 
 class DocumentData(BaseModel):
     client_name: str
@@ -82,7 +117,17 @@ class DocumentData(BaseModel):
 def send_reminder(gst_number=None, documents_needed: List[str] = None):
     print("inside send reminder")
 
-    dataResponse = getAllDataFromSQL(gst_number)     
+    dataResponse = getAllDataFromSQL(gst_number)
+    
+    if isinstance(documents_needed, list) and len(documents_needed) == 1 and isinstance(documents_needed[0], str):
+            try:
+                documents_needed = ast.literal_eval(documents_needed[0])
+            except Exception as e:
+                logger.error(f"Failed to parse documents needed: {documents_needed}, error: {e}")
+                return
+
+    logger.info(f"Parsed months: {documents_needed}")
+
 
     pending_tasks = [doc for doc in documents_needed if doc not in dataResponse[0][3]]   
 
@@ -104,6 +149,8 @@ def send_reminder(gst_number=None, documents_needed: List[str] = None):
     else:
         print("No late fee. Current date is before or on the 12th.")
 
+    print("pending_tasks",pending_tasks)
+
 
     if pending_tasks:
         recipient = 919943531228
@@ -119,11 +166,6 @@ def send_reminder(gst_number=None, documents_needed: List[str] = None):
 
 
 
-
-MONTH_MAP = {
-    "January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6,
-    "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12
-}
 
 from dotenv import load_dotenv, set_key, find_dotenv
 import os
@@ -180,159 +222,127 @@ def llm_message(name, trade_name, phone_number, documents_submitted, year, month
 
 
 def schedule_reminder(reminder):
-
-
+    job_id_prefix = f"reminder_{reminder.reminderName}_{reminder.client}"
+    
     if reminder.period == "Monthly":
-        # start_date = datetime.strptime(reminder.periodData.fromDate, "%Y-%m-%d")
-        # end_date = datetime.strptime(reminder.periodData.toDate, "%Y-%m-%d")
         start_day = int(reminder.periodData.fromDay)
         end_day = int(reminder.periodData.toDay)
-
-        print(start_day,type(start_day))
-        print(end_day,type(end_day))
-
-        
-        current_day = start_day
-        print(current_day,type(current_day))
         
         for day in range(start_day, end_day + 1):
-
-            job_id = f"-{reminder.period}_reminder_{reminder.reminderName}_{day}"
-
-            job_id_created=scheduler.add_job(
+            job_id = f"{job_id_prefix}_{day}"
+            scheduler.add_job(
                 send_reminder,
                 CronTrigger(day=day, hour=int(reminder.periodData.triggerTime.split(':')[0]), minute=int(reminder.periodData.triggerTime.split(':')[1])),
-                args=[reminder.gstin,reminder.pendingItems],
-                # kwargs={"reminder_name": reminder.reminderName},  # Store reminder name
+                args=[reminder.gstin, reminder.pendingItems],
                 id=job_id,
                 replace_existing=True
             )
-            logging.info(f"job created id {job_id_created}")
-
-            logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {current_day} at {reminder.periodData.triggerTime}")
+            logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} at {reminder.periodData.triggerTime}")
         
-        print("-------------------------- listing jobs -----------------")
         list_scheduled_jobs()
 
-    elif reminder.period == "Quarterly" or reminder.period == "Halfyearly":
+    elif reminder.period == "Quarterly":
+        months = reminder.periodData.months
+
+        if isinstance(months, list) and len(months) == 1 and isinstance(months[0], str):
+            try:
+                months = ast.literal_eval(months[0])
+            except Exception as e:
+                logger.error(f"Failed to parse months: {months}, error: {e}")
+                return
+
+        logger.info(f"Parsed months: {months}")
         
-
-        months=reminder.periodData.months
-
         for month in months:
-            
-            print(f"month:{month} , month_map:{MONTH_MAP[month]}")
+            print("month",month)
+
             start_day = int(reminder.periodData.reminderFromDate)
             end_day = int(reminder.periodData.reminderToDate)
-            current_day = start_day
             
             for day in range(start_day, end_day + 1):
-
-                
                 job_id = f"{reminder.period}_reminder_{reminder.reminderName}__{month}_{day}"
-                print("job id",job_id)
-                    
-                job_id_created=scheduler.add_job(
+                scheduler.add_job(
                     send_reminder,
                     CronTrigger(month=MONTH_MAP[month], day=day,
                                 hour=int(reminder.periodData.reminderTime.split(':')[0]), minute=int(reminder.periodData.reminderTime.split(':')[1])),
-                    args=[reminder.gstin,reminder.pendingItems],
+                    args=[reminder.gstin, reminder.pendingItems],
                     id=job_id,
                     replace_existing=True
-
                 )
-                print("job_id_created",job_id_created)
-                if job_id_created:
-                    logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} for month {month}")
-                else:
-                    logger.info(f"Failed to schedule {reminder.period} reminder '{reminder.reminderName}'")
+                logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} for month {month}")
 
-        print("-------------------------- listing jobs ---------------------------")
         list_scheduled_jobs()
+
+    elif reminder.period == "Yearly":
+        months = reminder.periodData.yearlyMonths
+        start_day = int(reminder.periodData.yearlyFromDate)
+        end_day = int(reminder.periodData.yearlyToDate)
+        weekly_frequency = reminder.periodData.weeklyFrequency
+        hour = int(reminder.periodData.yearlyTime.split(':')[0])
+        minute = int(reminder.periodData.yearlyTime.split(':')[1])
+
+        for month in months:
+            month_num = MONTH_MAP[month]
+            
+            if weekly_frequency == "daily":
+                # Schedule daily reminders for each day in the range
+                for day in range(start_day, end_day + 1):
+                    job_id = f"yearly_daily_{reminder.reminderName}_{month}_{day}"
+                    scheduler.add_job(
+                        send_reminder,
+                        CronTrigger(month=month_num, day=day, hour=hour, minute=minute),
+                        args=[reminder.gstin, reminder.pendingItems],
+                        id=job_id,
+                        replace_existing=True
+                    )
+                    logger.info(f"Scheduled daily yearly reminder for {reminder.reminderName} on {month} {day}")
+
+            elif weekly_frequency == "every3days":
+                # Schedule reminders every 3 days within the range
+                for day in range(start_day, end_day + 1, 3):
+                    job_id = f"yearly_3days_{reminder.reminderName}_{month}_{day}"
+                    scheduler.add_job(
+                        send_reminder,
+                        CronTrigger(month=month_num, day=day, hour=hour, minute=minute),
+                        args=[reminder.gstin, reminder.pendingItems],
+                        id=job_id,
+                        replace_existing=True
+                    )
+                    logger.info(f"Scheduled 3-day yearly reminder for {reminder.reminderName} on {month} {day}")
+
+            elif weekly_frequency == "twiceAWeek":
+                # Schedule reminders twice a week (e.g., Monday and Thursday)
+                for day in range(start_day, end_day + 1):
+                    if day % 7 in [0, 3]:  # Monday and Thursday
+                        job_id = f"yearly_twice_{reminder.reminderName}_{month}_{day}"
+                        scheduler.add_job(
+                            send_reminder,
+                            CronTrigger(month=month_num, day=day, hour=hour, minute=minute),
+                            args=[reminder.gstin, reminder.pendingItems],
+                            id=job_id,
+                            replace_existing=True
+                        )
+                        logger.info(f"Scheduled twice-weekly yearly reminder for {reminder.reminderName} on {month} {day}")
+
+            elif weekly_frequency == "onceAWeek":
+                # Schedule reminder once a week (e.g., Monday)
+                for day in range(start_day, end_day + 1):
+                    if day % 7 == 0:  # Monday
+                        job_id = f"yearly_once_{reminder.reminderName}_{month}_{day}"
+                        scheduler.add_job(
+                            send_reminder,
+                            CronTrigger(month=month_num, day=day, hour=hour, minute=minute),
+                            args=[reminder.gstin, reminder.pendingItems],
+                            id=job_id,
+                            replace_existing=True
+                        )
+                        logger.info(f"Scheduled weekly yearly reminder for {reminder.reminderName} on {month} {day}")
+
+        list_scheduled_jobs()
+
     else:
         raise HTTPException(status_code=400, detail="Invalid period type")
-    
-#----------------------------------------------------------------------------------------------------------------------------------
 
-    # for client_id, phone_number, documents, year , month in clinet_reminders:
-    #     pending_tasks = [doc for doc in reminder.pendingItems if doc not in documents ]
-    #     logging.info(f"Pending tasks for {phone_number}: {pending_tasks}")
-        
-    #     if reminder.period == "Monthly":
-    #         # start_date = datetime.strptime(reminder.periodData.fromDate, "%Y-%m-%d")
-    #         # end_date = datetime.strptime(reminder.periodData.toDate, "%Y-%m-%d")
-    #         start_day = int(reminder.periodData.fromDay)
-    #         end_day = int(reminder.periodData.toDay)
-
-    #         print(start_day,type(start_day))
-    #         print(end_day,type(end_day))
- 
-            
-    #         current_day = start_day
-    #         print(current_day,type(current_day))
-    #         # while current_date <= end_day:
-            
-    #         for day in range(start_day, end_day + 1):
-
-    #             job_id = f"{job_id_prefix}_{current_day}"
-
-    #             message = f"{reminder.message} : * {', '.join(pending_tasks)}*."
-
-    #             job_id_created=scheduler.add_job(
-    #                 send_reminder,
-    #                 CronTrigger(day=current_day, hour=int(reminder.periodData.triggerTime.split(':')[0]), minute=int(reminder.periodData.triggerTime.split(':')[1])),
-    #                 args=[reminder.client, message, reminder.pendingItems,phone_number],
-    #                 # kwargs={"reminder_name": reminder.reminderName},  # Store reminder name
-    #                 id=job_id,
-    #                 replace_existing=True
-    #             )
-    #             logging.info(f"job created id {job_id_created}")
-
-    #             logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {current_day} at {reminder.periodData.triggerTime}")
-            
-    #         print("-------------------------- listing jobs -----------------")
-    #         list_scheduled_jobs()
-
-    #     elif reminder.period == "Quarterly" or reminder.period == "Halfyearly":
-            
-
-    #         months=reminder.periodData.months
-
-    #         for month in months:
-                
-    #             print(f"month:{month} , month_map:{MONTH_MAP[month]}")
-    #             start_day = int(reminder.periodData.reminderFromDate)
-    #             end_day = int(reminder.periodData.reminderToDate)
-    #             current_day = start_day
-                
-    #             for day in range(start_day, end_day + 1):
-
-                    
-    #                 job_id = f"{reminder.period} {job_id_prefix}_{month}_{day}"
-    #                 print("job id",job_id)
-                        
-    #                 job_id_created=scheduler.add_job(
-    #                     send_reminder,
-    #                     CronTrigger(month=MONTH_MAP[month], day=day,
-    #                                 hour=int(reminder.periodData.reminderTime.split(':')[0]), minute=int(reminder.periodData.reminderTime.split(':')[1])),
-    #                     args=[reminder.client, reminder.message, reminder.pendingItems,phone_number],
-    #                     id=job_id,
-    #                     replace_existing=True
-
-    #                 )
-    #                 print("job_id_created",job_id_created)
-    #                 if job_id_created:
-    #                     logger.info(f"Scheduled {reminder.period} reminder '{reminder.reminderName}' for {reminder.client} on {day} for month {month}")
-    #                 else:
-    #                     logger.info(f"Failed to schedule {reminder.period} reminder '{reminder.reminderName}'")
-
-    #         print("-------------------------- listing jobs ---------------------------")
-    #         list_scheduled_jobs()
-    #     else:
-    #         raise HTTPException(status_code=400, detail="Invalid period type")
-
-
-#----------------------------------------------------------------------------------------------------------------------------------
 
 # Function to list all scheduled jobs
 
@@ -354,6 +364,21 @@ class DocumentData(BaseModel):
 @app.post("/create_reminder")
 async def create_reminder(reminder: ReminderData):
     print("reminder json",reminder)
+
+    # documents_needed = reminder.pendingItems
+
+    # print("document_needed",documents_needed)
+
+    # if isinstance(documents_needed, list) and len(documents_needed) == 1 and isinstance(documents_needed[0], str):
+    #         try:
+    #             documents_needed = ast.literal_eval(documents_needed[0])
+    #         except Exception as e:
+    #             logger.error(f"Failed to parse documents needed: {documents_needed}, error: {e}")
+    #             return
+            
+    # for i in documents_needed:
+
+    #     print(f"Parsed months: {i}")
     schedule_reminder(reminder)
     return {"message": f"{reminder.period} reminder '{reminder.reminderName}' scheduled for {reminder.client}"}
 
